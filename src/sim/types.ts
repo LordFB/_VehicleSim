@@ -1,0 +1,270 @@
+export type Vec3Tuple = [number, number, number];
+export type QuatTuple = [number, number, number, number];
+
+export type WheelId = 'frontLeft' | 'frontRight' | 'rearLeft' | 'rearRight';
+
+export type Pose = {
+  position: Vec3Tuple;
+  orientation: QuatTuple;
+};
+
+export type SurfaceMaterialId =
+  | 'asphalt_new'
+  | 'painted_line'
+  | 'kerb'
+  | 'grass'
+  | 'gravel'
+  | 'ice';
+
+export type SurfaceMaterial = {
+  id: SurfaceMaterialId;
+  muLongitudinal: number;
+  muLateral: number;
+  roughness: number;
+  wetness: number;
+  temperatureC: number;
+  rubberLevel: number;
+  rollingResistance: number;
+};
+
+export type SurfaceContact = {
+  point: Vec3Tuple;
+  normal: Vec3Tuple;
+  depth: number;
+  materialId: SurfaceMaterialId;
+  muLongitudinal: number;
+  muLateral: number;
+  roughness: number;
+  wetness: number;
+  temperatureC: number;
+  rubberLevel: number;
+  gravelDepth: number;
+};
+
+export type SurfaceZoneSpec = {
+  id: string;
+  materialId: SurfaceMaterialId;
+  type: 'rect' | 'circle' | 'ring';
+  center: [number, number];
+  size?: [number, number];
+  radius?: number;
+  innerRadius?: number;
+  heightOffset?: number;
+};
+
+export type BarrierSpec = {
+  id: string;
+  center: Vec3Tuple;
+  halfExtents: Vec3Tuple;
+};
+
+export type WorldSpec = {
+  gravity: number;
+  defaultMaterialId: SurfaceMaterialId;
+  materials: SurfaceMaterial[];
+  zones: SurfaceZoneSpec[];
+  barriers: BarrierSpec[];
+};
+
+export type CurvePoint = [number, number];
+
+export type TireSpec = {
+  radius: number;
+  width: number;
+  mass: number;
+  longitudinalStiffness: number;
+  corneringStiffness: number;
+  camberStiffness: number;
+  relaxationLengthLongitudinal: number;
+  relaxationLengthLateral: number;
+  loadSensitivity: number;
+  pneumaticTrail: number;
+  rollingResistanceScale: number;
+  optimalTempC: number;
+  coldMuScale: number;
+  overheatMuScale: number;
+  wearRate: number;
+};
+
+export type SuspensionSpec = {
+  restLength: number;
+  droopLimit: number;
+  springRate: number;
+  damperBump: number;
+  damperRebound: number;
+  bumpStopLength: number;
+  bumpStopRate: number;
+  antiRollRate: number;
+  motionRatio: number;
+  camberCurve: CurvePoint[];
+  toeCurve: CurvePoint[];
+  unsprungMass: number;
+};
+
+export type WheelSpec = {
+  id: WheelId;
+  localPosition: Vec3Tuple;
+  steer: boolean;
+  drive: boolean;
+  brakeBias: number;
+  tire: TireSpec;
+  suspension: SuspensionSpec;
+  inertia: number;
+};
+
+export type EngineSpec = {
+  idleRpm: number;
+  redlineRpm: number;
+  inertia: number;
+  torqueCurve: CurvePoint[];
+  throttleResponse: number;
+  engineBrakingTorque: number;
+};
+
+export type DrivetrainSpec = {
+  clutchTorqueCapacity: number;
+  gearRatios: number[];
+  finalDrive: number;
+  differential: 'open';
+  drivetrainEfficiency: number;
+  autoShift: boolean;
+  shiftUpRpm: number;
+  shiftDownRpm: number;
+};
+
+export type BrakeSpec = {
+  maxTorque: number;
+  handbrakeTorque: number;
+  fadeStartC: number;
+  fadeEndC: number;
+  heatCapacity: number;
+  coolingRate: number;
+  ambientTempC: number;
+};
+
+export type AeroSpec = {
+  airDensity: number;
+  dragArea: number;
+  liftArea: number;
+  centerOfPressure: Vec3Tuple;
+};
+
+export type VehicleSpec = {
+  name: string;
+  chassis: {
+    mass: number;
+    centerOfMass: Vec3Tuple;
+    inertia: Vec3Tuple;
+    dimensions: Vec3Tuple;
+  };
+  steering: {
+    maxAngleRad: number;
+    responseRate: number;
+  };
+  wheels: WheelSpec[];
+  engine: EngineSpec;
+  drivetrain: DrivetrainSpec;
+  brakes: BrakeSpec;
+  aero: AeroSpec;
+};
+
+export type InputFrame = {
+  steering: number;
+  throttle: number;
+  brake: number;
+  clutch: number;
+  handbrake: number;
+  shiftUp: boolean;
+  shiftDown: boolean;
+  reset: boolean;
+  /** When defined, overrides the vehicle spec's autoShift (gameplay transmission mode). */
+  autoShift?: boolean;
+  timestamp: number;
+  sequence: number;
+};
+
+export type WheelTelemetry = {
+  id: WheelId;
+  loadN: number;
+  slipRatio: number;
+  slipAngleRad: number;
+  camberRad: number;
+  toeRad: number;
+  fx: number;
+  fy: number;
+  fz: number;
+  mz: number;
+  suspensionTravel: number;
+  angularVelocity: number;
+  contactPoint: Vec3Tuple;
+  forceWorld: Vec3Tuple;
+  tireSurfaceTempC: number;
+  tireCarcassTempC: number;
+  tireWear: number;
+  tireMuScale: number;
+  brakeTempC: number;
+  brakeFade: number;
+  surfaceMaterialId: SurfaceMaterialId;
+  contact: boolean;
+};
+
+export type TelemetryFrame = {
+  time: number;
+  speedMps: number;
+  yawRate: number;
+  sideslipRad: number;
+  steeringAngleRad: number;
+  rpm: number;
+  gear: number;
+  throttle: number;
+  brake: number;
+  simFrameMs: number;
+  wheels: Record<WheelId, WheelTelemetry>;
+};
+
+export type WheelSnapshot = {
+  id: WheelId;
+  pose: Pose;
+  steerAngle: number;
+  camberAngle: number;
+  spinAngle: number;
+  angularVelocity: number;
+  suspensionTravel: number;
+};
+
+export type PhysicsSnapshot = {
+  sequence: number;
+  simTime: number;
+  alpha: number;
+  chassis: Pose;
+  linearVelocity: Vec3Tuple;
+  angularVelocity: Vec3Tuple;
+  wheels: Record<WheelId, WheelSnapshot>;
+  telemetry: TelemetryFrame;
+};
+
+export type PhysicsFacade = {
+  init(worldSpec: WorldSpec): Promise<void>;
+  createVehicle(vehicleSpec: VehicleSpec): Promise<string>;
+  submitInput(inputFrame: InputFrame): void;
+  step(renderTimeMs: number): void;
+  getSnapshot(alpha?: number): PhysicsSnapshot | null;
+  reset(seed: number): void;
+  querySurface(point: Vec3Tuple): Promise<SurfaceContact>;
+  dispose(): void;
+};
+
+export type WorkerRequest =
+  | { type: 'init'; world: WorldSpec }
+  | { type: 'createVehicle'; vehicle: VehicleSpec }
+  | { type: 'input'; input: InputFrame }
+  | { type: 'step'; renderTimeMs: number }
+  | { type: 'reset'; seed: number }
+  | { type: 'querySurface'; id: number; point: Vec3Tuple };
+
+export type WorkerResponse =
+  | { type: 'ready' }
+  | { type: 'vehicleCreated'; id: string }
+  | { type: 'snapshot'; snapshot: PhysicsSnapshot }
+  | { type: 'surface'; id: number; contact: SurfaceContact }
+  | { type: 'error'; message: string };

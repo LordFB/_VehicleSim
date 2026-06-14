@@ -1,0 +1,150 @@
+{
+  "gravity": 9.81,
+  "defaultMaterialId": "asphalt_new",
+  "materials": [
+    {
+      "id": "asphalt_new",
+      "muLongitudinal": 1.12,
+      "muLateral": 1.08,
+      "roughness": 0.28,
+      "wetness": 0,
+      "temperatureC": 28,
+      "rubberLevel": 0.55,
+      "rollingResistance": 0.012
+    },
+    {
+      "id": "painted_line",
+      "muLongitudinal": 0.82,
+      "muLateral": 0.78,
+      "roughness": 0.18,
+      "wetness": 0.05,
+      "temperatureC": 27,
+      "rubberLevel": 0.2,
+      "rollingResistance": 0.011
+    },
+    {
+      "id": "kerb",
+      "muLongitudinal": 0.95,
+      "muLateral": 0.9,
+      "roughness": 0.75,
+      "wetness": 0,
+      "temperatureC": 26,
+      "rubberLevel": 0.1,
+      "rollingResistance": 0.018
+    },
+    {
+      "id": "grass",
+      "muLongitudinal": 0.42,
+      "muLateral": 0.36,
+      "roughness": 0.85,
+      "wetness": 0.12,
+      "temperatureC": 24,
+      "rubberLevel": 0,
+      "rollingResistance": 0.04
+    },
+    {
+      "id": "gravel",
+      "muLongitudinal": 0.62,
+      "muLateral": 0.52,
+      "roughness": 0.95,
+      "wetness": 0.02,
+      "temperatureC": 24,
+      "rubberLevel": 0,
+      "rollingResistance": 0.055
+    },
+    {
+      "id": "ice",
+      "muLongitudinal": 0.18,
+      "muLateral": 0.14,
+      "roughness": 0.05,
+      "wetness": 0.3,
+      "temperatureC": -2,
+      "rubberLevel": 0,
+      "rollingResistance": 0.006
+    }
+  ],
+  "zones": [
+    {
+      "id": "skidpad_paint",
+      "materialId": "painted_line",
+      "type": "ring",
+      "center": [-22, 18],
+      "innerRadius": 11.8,
+      "radius": 12.2,
+      "heightOffset": 0.005
+    },
+    {
+      "id": "left_split_mu_ice",
+      "materialId": "ice",
+      "type": "rect",
+      "center": [-2.6, 48],
+      "size": [2.6, 28],
+      "heightOffset": 0
+    },
+    {
+      "id": "right_split_mu_asphalt_line",
+      "materialId": "painted_line",
+      "type": "rect",
+      "center": [2.6, 48],
+      "size": [2.6, 28],
+      "heightOffset": 0
+    },
+    {
+      "id": "kerb_left",
+      "materialId": "kerb",
+      "type": "rect",
+      "center": [-6.3, 0],
+      "size": [0.8, 84],
+      "heightOffset": 0.08
+    },
+    {
+      "id": "kerb_right",
+      "materialId": "kerb",
+      "type": "rect",
+      "center": [6.3, 0],
+      "size": [0.8, 84],
+      "heightOffset": 0.08
+    },
+    {
+      "id": "outside_grass_left",
+      "materialId": "grass",
+      "type": "rect",
+      "center": [-12, 0],
+      "size": [10, 120],
+      "heightOffset": -0.025
+    },
+    {
+      "id": "outside_grass_right",
+      "materialId": "grass",
+      "type": "rect",
+      "center": [12, 0],
+      "size": [10, 120],
+      "heightOffset": -0.025
+    },
+    {
+      "id": "gravel_escape",
+      "materialId": "gravel",
+      "type": "rect",
+      "center": [0, -38],
+      "size": [18, 12],
+      "heightOffset": -0.015
+    }
+  ],
+  "barriers": [
+    {
+      "id": "lane_end",
+      "center": [0, 0.7, 72],
+      "halfExtents": [8, 0.7, 0.3]
+    },
+    {
+      "id": "left_wall",
+      "center": [-16, 0.7, 14],
+      "halfExtents": [0.3, 0.7, 58]
+    },
+    {
+      "id": "right_wall",
+      "center": [16, 0.7, 14],
+      "halfExtents": [0.3, 0.7, 58]
+    }
+  ]
+}

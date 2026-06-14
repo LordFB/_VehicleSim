@@ -1,0 +1,204 @@
+{
+  "name": "vertical_slice_gt",
+  "chassis": {
+    "mass": 1450,
+    "centerOfMass": [0, -0.12, 0.05],
+    "inertia": [620, 1680, 1850],
+    "dimensions": [1.92, 1.18, 4.38]
+  },
+  "steering": {
+    "maxAngleRad": 0.58,
+    "responseRate": 9
+  },
+  "wheels": [
+    {
+      "id": "frontLeft",
+      "localPosition": [-0.82, -0.18, 1.34],
+      "steer": true,
+      "drive": false,
+      "brakeBias": 0.6,
+      "inertia": 1.45,
+      "tire": {
+        "radius": 0.335,
+        "width": 0.245,
+        "mass": 11.2,
+        "longitudinalStiffness": 120000,
+        "corneringStiffness": 95000,
+        "camberStiffness": 7000,
+        "relaxationLengthLongitudinal": 0.32,
+        "relaxationLengthLateral": 0.48,
+        "loadSensitivity": 0.12,
+        "pneumaticTrail": 0.055,
+        "rollingResistanceScale": 0.012,
+        "optimalTempC": 92,
+        "coldMuScale": 0.82,
+        "overheatMuScale": 0.75,
+        "wearRate": 1
+      },
+      "suspension": {
+        "restLength": 0.43,
+        "droopLimit": 0.12,
+        "springRate": 52000,
+        "damperBump": 4200,
+        "damperRebound": 6500,
+        "bumpStopLength": 0.08,
+        "bumpStopRate": 120000,
+        "antiRollRate": 6800,
+        "motionRatio": 0.94,
+        "camberCurve": [[0, -0.012], [0.2, -0.032], [0.43, -0.065]],
+        "toeCurve": [[0, 0.002], [0.2, 0], [0.43, -0.003]],
+        "unsprungMass": 42
+      }
+    },
+    {
+      "id": "frontRight",
+      "localPosition": [0.82, -0.18, 1.34],
+      "steer": true,
+      "drive": false,
+      "brakeBias": 0.6,
+      "inertia": 1.45,
+      "tire": {
+        "radius": 0.335,
+        "width": 0.245,
+        "mass": 11.2,
+        "longitudinalStiffness": 120000,
+        "corneringStiffness": 95000,
+        "camberStiffness": 7000,
+        "relaxationLengthLongitudinal": 0.32,
+        "relaxationLengthLateral": 0.48,
+        "loadSensitivity": 0.12,
+        "pneumaticTrail": 0.055,
+        "rollingResistanceScale": 0.012,
+        "optimalTempC": 92,
+        "coldMuScale": 0.82,
+        "overheatMuScale": 0.75,
+        "wearRate": 1
+      },
+      "suspension": {
+        "restLength": 0.43,
+        "droopLimit": 0.12,
+        "springRate": 52000,
+        "damperBump": 4200,
+        "damperRebound": 6500,
+        "bumpStopLength": 0.08,
+        "bumpStopRate": 120000,
+        "antiRollRate": 6800,
+        "motionRatio": 0.94,
+        "camberCurve": [[0, -0.012], [0.2, -0.032], [0.43, -0.065]],
+        "toeCurve": [[0, -0.002], [0.2, 0], [0.43, 0.003]],
+        "unsprungMass": 42
+      }
+    },
+    {
+      "id": "rearLeft",
+      "localPosition": [-0.82, -0.18, -1.28],
+      "steer": false,
+      "drive": true,
+      "brakeBias": 0.4,
+      "inertia": 1.5,
+      "tire": {
+        "radius": 0.34,
+        "width": 0.265,
+        "mass": 11.8,
+        "longitudinalStiffness": 128000,
+        "corneringStiffness": 102000,
+        "camberStiffness": 7200,
+        "relaxationLengthLongitudinal": 0.35,
+        "relaxationLengthLateral": 0.52,
+        "loadSensitivity": 0.13,
+        "pneumaticTrail": 0.058,
+        "rollingResistanceScale": 0.012,
+        "optimalTempC": 94,
+        "coldMuScale": 0.82,
+        "overheatMuScale": 0.74,
+        "wearRate": 1.05
+      },
+      "suspension": {
+        "restLength": 0.42,
+        "droopLimit": 0.13,
+        "springRate": 56000,
+        "damperBump": 4400,
+        "damperRebound": 6800,
+        "bumpStopLength": 0.08,
+        "bumpStopRate": 125000,
+        "antiRollRate": 5200,
+        "motionRatio": 0.92,
+        "camberCurve": [[0, -0.016], [0.2, -0.038], [0.42, -0.07]],
+        "toeCurve": [[0, 0.004], [0.2, 0.002], [0.42, 0.001]],
+        "unsprungMass": 44
+      }
+    },
+    {
+      "id": "rearRight",
+      "localPosition": [0.82, -0.18, -1.28],
+      "steer": false,
+      "drive": true,
+      "brakeBias": 0.4,
+      "inertia": 1.5,
+      "tire": {
+        "radius": 0.34,
+        "width": 0.265,
+        "mass": 11.8,
+        "longitudinalStiffness": 128000,
+        "corneringStiffness": 102000,
+        "camberStiffness": 7200,
+        "relaxationLengthLongitudinal": 0.35,
+        "relaxationLengthLateral": 0.52,
+        "loadSensitivity": 0.13,
+        "pneumaticTrail": 0.058,
+        "rollingResistanceScale": 0.012,
+        "optimalTempC": 94,
+        "coldMuScale": 0.82,
+        "overheatMuScale": 0.74,
+        "wearRate": 1.05
+      },
+      "suspension": {
+        "restLength": 0.42,
+        "droopLimit": 0.13,
+        "springRate": 56000,
+        "damperBump": 4400,
+        "damperRebound": 6800,
+        "bumpStopLength": 0.08,
+        "bumpStopRate": 125000,
+        "antiRollRate": 5200,
+        "motionRatio": 0.92,
+        "camberCurve": [[0, -0.016], [0.2, -0.038], [0.42, -0.07]],
+        "toeCurve": [[0, -0.004], [0.2, -0.002], [0.42, -0.001]],
+        "unsprungMass": 44
+      }
+    }
+  ],
+  "engine": {
+    "idleRpm": 900,
+    "redlineRpm": 7600,
+    "inertia": 0.32,
+    "torqueCurve": [[900, 170], [1800, 245], [3200, 360], [5200, 430], [6800, 390], [7600, 260]],
+    "throttleResponse": 8,
+    "engineBrakingTorque": 55
+  },
+  "drivetrain": {
+    "clutchTorqueCapacity": 650,
+    "gearRatios": [3.18, 2.05, 1.52, 1.16, 0.92, 0.78],
+    "finalDrive": 3.73,
+    "differential": "open",
+    "drivetrainEfficiency": 0.88,
+    "autoShift": true,
+    "shiftUpRpm": 7200,
+    "shiftDownRpm": 2400
+  },
+  "brakes": {
+    "maxTorque": 3600,
+    "handbrakeTorque": 2800,
+    "fadeStartC": 520,
+    "fadeEndC": 820,
+    "heatCapacity": 4800,
+    "coolingRate": 0.2,
+    "ambientTempC": 24
+  },
+  "aero": {
+    "airDensity": 1.225,
+    "dragArea": 0.72,
+    "liftArea": 0.42,
+    "centerOfPressure": [0, 0.08, -0.18]
+  }
+}
