@@ -147,30 +147,31 @@ function kerbs(line: CenterlinePoint[]): SurfaceZoneSpec[] {
 }
 
 /**
- * A sparse chain of AABB barriers along the OUTER edge only, set back from the racing
- * line so they read as the circuit boundary (Armco/tyre wall) without catching the
- * car mid-corner. Placed every few samples beyond the outside edge.
+ * Boundary walls along BOTH true track edges. Because physics barriers are axis-aligned
+ * boxes (solveBarriers does an AABB test), a long box laid on a diagonal section would
+ * have its corners overhang onto the road — the old bug where walls "blocked the road".
+ * Instead we place small cubes that hug the real edge: each is offset from the
+ * centerline by the half-width plus a margin along that sample's left-normal, so on every
+ * straight AND every corner the wall sits just outside the ribbon and never intrudes.
+ * Spaced closely so they read as a continuous tyre wall; rendered as instances.
  */
 function outerBarriers(line: CenterlinePoint[]): BarrierSpec[] {
   const out: BarrierSpec[] = [];
-  const setback = TRACK_HALF_WIDTH + 6;
-  const stride = 6; // every N samples
+  // Margin must clear the COLLISION inflation, not just the visual gap: the physics
+  // expands each wall by the car's projected OBB half-extents (~2.2 m for a 4.4 m car)
+  // plus the cube half (0.55 m). At margin 2 m the collision reached onto the racing
+  // line (invisible walls); 3.5 m leaves the car free to run right out to the edge.
+  const margin = 3.5; // metres beyond the track edge
+  const off = TRACK_HALF_WIDTH + margin;
+  const cube = 0.55; // half-extent of each wall cube
+  const stride = 2; // every N samples (~4.4 m of arc) → near-continuous wall
   let n = 0;
   for (let i = 0; i < line.length; i += stride) {
     const p = line[i];
-    // Outer edge follows the LEFT normal on the side away from the turn. On straights
-    // (curvature≈0) put walls on BOTH sides; on corners only the outside.
-    const sides: number[] = Math.abs(p.curvature) < 0.01 ? [1, -1] : [p.curvature < 0 ? 1 : -1];
-    for (const sgn of sides) {
-      const cx = p.pos[0] + p.left[0] * setback * sgn;
-      const cz = p.pos[1] + p.left[1] * setback * sgn;
-      // A short box roughly aligned to the tangent via its half-extents footprint.
-      const alongZ = Math.abs(p.tangent[1]) >= Math.abs(p.tangent[0]);
-      out.push({
-        id: `wall_${n++}`,
-        center: [cx, 0.6, cz],
-        halfExtents: alongZ ? [0.3, 0.6, stride * 1.3] : [stride * 1.3, 0.6, 0.3],
-      });
+    for (const sgn of [1, -1] as const) {
+      const cx = p.pos[0] + p.left[0] * off * sgn;
+      const cz = p.pos[1] + p.left[1] * off * sgn;
+      out.push({ id: `wall_${n++}`, center: [cx, cube, cz], halfExtents: [cube, cube, cube] });
     }
   }
   return out;

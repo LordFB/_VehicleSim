@@ -11,6 +11,16 @@ export type StartFinishLine = {
   headingRad: number;
 };
 
+/** Cosmetic spec for the abandoned banked oval (the sopraelevata). Purely visual. */
+export type BankingSpec = {
+  center: [number, number];
+  radius: number;
+  arcStartDeg: number;
+  arcEndDeg: number;
+  height: number;
+  bankDeg: number;
+};
+
 /**
  * Renders the Monza circuit: a sunlit grass plane, the smooth asphalt ribbon swept
  * along the real centerline, red/white apex kerbs, gravel run-offs, the checkered
@@ -27,6 +37,7 @@ export class LevelBuilder {
     private readonly world: WorldSpec,
     private readonly startFinish: StartFinishLine,
     private readonly centerline: CenterlinePoint[],
+    private readonly banking?: BankingSpec,
   ) {}
 
   build(): void {
@@ -37,6 +48,7 @@ export class LevelBuilder {
     this.createKerbs();
     this.createStartFinish();
     this.createBarriers();
+    this.createBanking();
   }
 
   dispose(): void {
@@ -195,6 +207,58 @@ export class LevelBuilder {
     mesh.name = 'start-finish-line';
     this.scene.add(mesh);
     this.disposables.push(geometry, material, texture);
+  }
+
+  /**
+   * The sopraelevata — Monza's abandoned 1955 banked oval, which still stands in the
+   * park. Built here as a cosmetic weathered-concrete banked arc: a curved strip that
+   * rises and tilts outward. Purely visual (no collision), so it can't affect physics.
+   */
+  private createBanking(): void {
+    const b = this.banking;
+    if (!b) return;
+    const segments = 48;
+    const a0 = (b.arcStartDeg * Math.PI) / 180;
+    const a1 = (b.arcEndDeg * Math.PI) / 180;
+    const bank = (b.bankDeg * Math.PI) / 180;
+    const stripWidth = b.height / Math.sin(bank); // slant length of the banked face
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const ang = a0 + (a1 - a0) * t;
+      const cx = b.center[0] + Math.cos(ang) * b.radius;
+      const cz = b.center[1] + Math.sin(ang) * b.radius;
+      // Outward radial direction (the bank leans up-and-out from the inner foot).
+      const rx = Math.cos(ang), rz = Math.sin(ang);
+      // Inner foot at ground, outer lip raised by height and pushed out horizontally.
+      const outX = Math.cos(bank) * stripWidth;
+      positions.push(cx, 0.02, cz); // inner foot
+      positions.push(cx + rx * outX, b.height, cz + rz * outX); // outer lip
+      uvs.push(t * 14, 0, t * 14, 1);
+    }
+    const indices: number[] = [];
+    for (let i = 0; i < segments; i++) {
+      const a = i * 2, bb = i * 2 + 1, c = (i + 1) * 2, d = (i + 1) * 2 + 1;
+      indices.push(a, c, bb, bb, c, d);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    const material = new THREE.MeshStandardMaterial({
+      color: 0x9a958c, // weathered concrete
+      roughness: 0.96,
+      metalness: 0,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.receiveShadow = true;
+    mesh.castShadow = true;
+    mesh.name = 'sopraelevata-banking';
+    this.scene.add(mesh);
+    this.disposables.push(geometry, material);
   }
 
   private createBarriers(): void {

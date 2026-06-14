@@ -28,7 +28,7 @@ import centerlineRaw from './monzaCenterline.json';
  * geometry is factual map data.
  */
 
-export const MONZA_SCALE = 1 / 3;
+export const MONZA_SCALE = 1 / 2;
 
 /** Half the track width. Real Monza is 10–12 m wide; we use ~11 m, scaled. */
 export const TRACK_HALF_WIDTH = (11 / 2) * MONZA_SCALE;

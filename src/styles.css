@@ -181,6 +181,170 @@ button:active {
   opacity: 1;
 }
 
+/* Car setup: open button (top-left, under the telemetry toggle area). */
+.setup-open {
+  top: max(12px, var(--ogp-safe-top-inset, 0px));
+  left: 12px;
+  z-index: 7;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: rgba(8, 12, 18, 0.66);
+  border: 1px solid rgba(120, 150, 180, 0.22);
+  backdrop-filter: blur(8px);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Car setup modal (garage panel). */
+.setup-modal {
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.setup-modal[hidden] {
+  display: none;
+}
+
+.setup-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 7, 11, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+.setup-panel {
+  position: relative;
+  width: min(460px, calc(100vw - 32px));
+  max-height: min(86vh, 720px);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border: 1px solid rgba(120, 150, 180, 0.26);
+  border-radius: 14px;
+  background: rgba(10, 14, 20, 0.94);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.setup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.setup-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #3fb7ff;
+  text-transform: uppercase;
+}
+
+.setup-close {
+  min-height: 30px;
+  width: 30px;
+  padding: 0;
+  border-radius: 7px;
+  font-size: 14px;
+}
+
+.setup-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 12px 18px 0;
+}
+
+.setup-tabs button {
+  flex: 1;
+  min-height: 34px;
+  border-radius: 8px 8px 0 0;
+  background: rgba(255, 255, 255, 0.04);
+  border-color: transparent;
+  color: #9fb0c0;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.setup-tabs button.is-active {
+  background: rgba(63, 183, 255, 0.16);
+  color: #f2f6fb;
+  border-bottom: 2px solid #3fb7ff;
+}
+
+.setup-body {
+  padding: 14px 18px 6px;
+  overflow-y: auto;
+}
+
+.setup-row {
+  display: grid;
+  grid-template-columns: 1fr 150px 64px;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.setup-row--toggle {
+  grid-template-columns: 1fr auto;
+}
+
+.setup-row__label {
+  font-size: 13px;
+  color: #d6e0ea;
+}
+
+.setup-row__value {
+  font: 600 13px/1 "SFMono-Regular", Consolas, monospace;
+  color: #3fb7ff;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.setup-row input[type="range"] {
+  width: 100%;
+  accent-color: #3fb7ff;
+}
+
+.setup-toggle {
+  min-width: 110px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.setup-toggle.is-on {
+  background: rgba(55, 212, 127, 0.18);
+  border-color: rgba(55, 212, 127, 0.5);
+  color: #8bf0bb;
+}
+
+.setup-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.setup-reset {
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.setup-hint {
+  font-size: 11px;
+  color: #7e8e9e;
+}
+
 .touch-joystick,
 .touch-buttons {
   position: fixed;

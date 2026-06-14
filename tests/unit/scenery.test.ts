@@ -26,33 +26,43 @@ describe('Scenery', () => {
     expect(a).toEqual(b);
   });
 
-  it('keeps the circuit footprint mostly clear of trees', () => {
-    // Trees scatter across the footprint but are kept off the racing surface: only a
-    // sparse few are allowed through inside the bounding box, and none right on it.
+  it('places trees inside the real forest masses and off the ribbon', () => {
+    // The product path supplies real Parco di Monza woodland masses + the track line.
+    // Trees should cluster inside the masses and never land on the racing surface.
     const bounds = { minX: -30, maxX: 430, minZ: -270, maxZ: 420 };
-    const scenery = new Scenery(bounds);
+    // A straight stretch of "track" up +Z and two woodland masses either side of it.
+    const trackLine: Array<[number, number]> = [];
+    for (let z = -40; z <= 120; z += 8) trackLine.push([0, z]);
+    const forests = [
+      { cx: -60, cz: 40, hx: 30, hz: 60 },
+      { cx: 70, cz: 40, hx: 30, hz: 60 },
+    ];
+    const scenery = new Scenery(bounds, trackLine, forests);
     const trunks = findInstanced(scenery.group, 'scenery-tree-trunks');
     expect(trunks).toBeTruthy();
     const m = new THREE.Matrix4();
     const pos = new THREE.Vector3();
     const scl = new THREE.Vector3();
     const q = new THREE.Quaternion();
-    let total = 0;
-    let inside = 0;
     const clr = SCENERY.TREE_CORRIDOR_HALF;
+    let total = 0;
+    let onRibbon = 0;
+    let inAMass = 0;
     for (let i = 0; i < trunks!.count; i++) {
       trunks!.getMatrixAt(i, m);
       m.decompose(pos, q, scl);
       if (scl.x < 0.01) continue; // collapsed/unused instance
       total++;
-      if (
-        pos.x > bounds.minX - clr && pos.x < bounds.maxX + clr &&
-        pos.z > bounds.minZ - clr && pos.z < bounds.maxZ + clr
-      ) inside++;
+      // distance to the (straight, x=0) ribbon segment
+      const onTrack = Math.abs(pos.x) <= clr && pos.z >= -48 && pos.z <= 128;
+      if (onTrack) onRibbon++;
+      if (forests.some((f) => Math.abs(pos.x - f.cx) <= f.hx * 1.2 && Math.abs(pos.z - f.cz) <= f.hz * 1.2)) inAMass++;
     }
     expect(total).toBeGreaterThan(0);
-    // The vast majority of placed trees sit outside the circuit footprint.
-    expect(inside / total).toBeLessThan(0.25);
+    // No tree sits on the racing surface.
+    expect(onRibbon).toBe(0);
+    // The overwhelming majority sit inside (or right at the soft edge of) a real mass.
+    expect(inAMass / total).toBeGreaterThan(0.9);
     scenery.dispose();
   });
 });

@@ -19,22 +19,27 @@ import { SCENERY } from '../core/Constants';
  */
 export type TrackBounds = { minX: number; maxX: number; minZ: number; maxZ: number };
 
+/** A real woodland mass (axis-aligned box) from the Parco di Monza, in game XZ. */
+export type ForestMass = { cx: number; cz: number; hx: number; hz: number };
+
 export class Scenery {
   readonly group = new THREE.Group();
   private readonly disposables: Array<THREE.BufferGeometry | THREE.Material> = [];
   private readonly bounds: TrackBounds;
   private readonly postLine: Array<[number, number]>;
+  private readonly forests: ForestMass[];
 
   /**
-   * @param bounds   the circuit's footprint; trees are kept outside it (plus a margin)
-   *                 so the forest of the royal park rings the track without spawning on
-   *                 the racing surface. Defaults to a small central box if omitted.
-   * @param postLine a polyline (x,z) along the track for marshalling the reflector
-   *                 posts; defaults to a short straight if omitted.
+   * @param bounds   the circuit's footprint; trees are kept off the racing surface.
+   * @param postLine a polyline (x,z) along the track — used for the reflector posts AND
+   *                 as the ribbon centerline for the precise tree-clearance test.
+   * @param forests  real woodland masses (Parco di Monza, from OSM) to fill with trees;
+   *                 when omitted, trees scatter uniformly over the footprint instead.
    */
-  constructor(bounds?: TrackBounds, postLine?: Array<[number, number]>) {
+  constructor(bounds?: TrackBounds, postLine?: Array<[number, number]>, forests?: ForestMass[]) {
     this.bounds = bounds ?? { minX: -22, maxX: 22, minZ: -50, maxZ: 90 };
     this.postLine = postLine ?? defaultPostLine();
+    this.forests = forests ?? [];
     this.group.name = 'scenery';
     const rng = mulberry32(SCENERY.SEED);
     this.buildHills(rng);
@@ -55,12 +60,17 @@ export class Scenery {
     const q = new THREE.Quaternion();
     const pos = new THREE.Vector3();
     const scl = new THREE.Vector3();
+    // Monza sits on the flat Lombard plain — the "hills" are really a low, distant
+    // tree-line ringing the park, not mountains. Center the ring on the circuit and keep
+    // it broad and shallow so it reads as a wooded horizon under the haze.
+    const ringCx = (this.bounds.minX + this.bounds.maxX) / 2;
+    const ringCz = (this.bounds.minZ + this.bounds.maxZ) / 2;
     for (let i = 0; i < count; i++) {
       const ang = (i / count) * Math.PI * 2 + (rng() - 0.5) * 0.25;
       const dist = SCENERY.HILL_RADIUS * (0.85 + rng() * 0.4);
       const radius = SCENERY.HILL_MIN_R + rng() * (SCENERY.HILL_MAX_R - SCENERY.HILL_MIN_R);
-      const height = radius * (0.4 + rng() * 0.4);
-      pos.set(Math.cos(ang) * dist, height * 0.5 - 2, Math.sin(ang) * dist);
+      const height = radius * (0.18 + rng() * 0.16); // shallow: a tree-line, not a peak
+      pos.set(ringCx + Math.cos(ang) * dist, height * 0.5 - 3, ringCz + Math.sin(ang) * dist);
       scl.set(radius, height, radius);
       m.compose(pos, q, scl);
       mesh.setMatrixAt(i, m);
@@ -92,28 +102,44 @@ export class Scenery {
     const pos = new THREE.Vector3();
     const scl = new THREE.Vector3();
     const tint = new THREE.Color();
-    // Scatter over the whole circuit footprint (the royal park) and reject any tree
-    // that falls on or near the track; trees fill both the infield and the surrounds.
-    const cx = (this.bounds.minX + this.bounds.maxX) / 2;
-    const cz = (this.bounds.minZ + this.bounds.maxZ) / 2;
-    const spanX = this.bounds.maxX - this.bounds.minX;
-    const spanZ = this.bounds.maxZ - this.bounds.minZ;
-    const half = Math.max(spanX, spanZ) / 2 + SCENERY.TREE_OUTER_R;
     const clearance = SCENERY.TREE_CORRIDOR_HALF; // keep trees this far off the ribbon edge
+    // Area-weighted picker over the real Parco di Monza woodland masses (from OSM). When
+    // no masses are supplied, fall back to a uniform scatter over the footprint.
+    const useMasses = this.forests.length > 0;
+    const fallback = (() => {
+      const fcx = (this.bounds.minX + this.bounds.maxX) / 2;
+      const fcz = (this.bounds.minZ + this.bounds.maxZ) / 2;
+      const fhalf = Math.max(this.bounds.maxX - this.bounds.minX, this.bounds.maxZ - this.bounds.minZ) / 2 + SCENERY.TREE_OUTER_R;
+      return { fcx, fcz, fhalf };
+    })();
+    const cumAreas: number[] = [];
+    let areaSum = 0;
+    for (const f of this.forests) { areaSum += f.hx * f.hz; cumAreas.push(areaSum); }
+
     let placed = 0;
     let guard = 0;
     while (placed < count && guard < count * 12) {
       guard++;
-      const x = cx + (rng() * 2 - 1) * half;
-      const z = cz + (rng() * 2 - 1) * half;
-      // Don't drop trees inside the circuit footprint (plus clearance) — the racing
-      // surface and its immediate verges stay clear.
+      let x: number, z: number;
+      if (useMasses) {
+        // Pick a mass by area, then a point inside it (corners slightly soft so the
+        // wood reads organic, not a hard rectangle).
+        const r = rng() * areaSum;
+        let fi = 0; while (fi < cumAreas.length - 1 && r > cumAreas[fi]) fi++;
+        const f = this.forests[fi];
+        x = f.cx + (rng() * 2 - 1) * f.hx * 1.06;
+        z = f.cz + (rng() * 2 - 1) * f.hz * 1.06;
+      } else {
+        x = fallback.fcx + (rng() * 2 - 1) * fallback.fhalf;
+        z = fallback.fcz + (rng() * 2 - 1) * fallback.fhalf;
+      }
+      // Never drop a tree on the racing surface or its immediate verge. Quick bbox
+      // reject first, then the precise distance-to-ribbon test.
       if (
         x > this.bounds.minX - clearance && x < this.bounds.maxX + clearance &&
-        z > this.bounds.minZ - clearance && z < this.bounds.maxZ + clearance
-      ) {
-        if (rng() < 0.82) continue; // mostly clear inside the box; let a few infield trees through sparsely
-      }
+        z > this.bounds.minZ - clearance && z < this.bounds.maxZ + clearance &&
+        this.onRibbon(x, z, clearance)
+      ) continue;
 
       const scale = SCENERY.TREE_MIN_H + rng() * (SCENERY.TREE_MAX_H - SCENERY.TREE_MIN_H);
       const yaw = rng() * Math.PI * 2;
@@ -156,6 +182,23 @@ export class Scenery {
     if (lower.instanceColor) lower.instanceColor.needsUpdate = true;
     if (upper.instanceColor) upper.instanceColor.needsUpdate = true;
     this.group.add(trunks, lower, upper);
+  }
+
+  /** True if (x,z) is within `margin` metres of the track ribbon centerline. */
+  private onRibbon(x: number, z: number, margin: number): boolean {
+    const line = this.postLine;
+    if (line.length < 2) return false;
+    for (let i = 1; i < line.length; i++) {
+      const [ax, az] = line[i - 1];
+      const [bx, bz] = line[i];
+      const dx = bx - ax, dz = bz - az;
+      const len2 = dx * dx + dz * dz || 1;
+      let t = ((x - ax) * dx + (z - az) * dz) / len2;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const px = ax + dx * t, pz = az + dz * t;
+      if (Math.hypot(x - px, z - pz) <= margin) return true;
+    }
+    return false;
   }
 
   /**

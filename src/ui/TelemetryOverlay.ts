@@ -49,7 +49,7 @@ export class TelemetryOverlay {
       `yaw rate   ${frame.yawRate.toFixed(3)} rad/s`,
       `sideslip   ${(frame.sideslipRad * 180 / Math.PI).toFixed(2)} deg`,
       `steer      ${(frame.steeringAngleRad * 180 / Math.PI).toFixed(1)} deg`,
-      `engine     ${Math.round(frame.rpm)} rpm  G${frame.gear}`,
+      `engine     ${Math.round(frame.rpm)} rpm  G${frame.gear < 0 ? 'R' : frame.gear === 0 ? 'N' : frame.gear}`,
       `input      T${frame.throttle.toFixed(2)} B${frame.brake.toFixed(2)}`,
       `load F     ${frontLoads} N`,
       `load R     ${rearLoads} N`,

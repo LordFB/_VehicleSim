@@ -2,6 +2,7 @@ import { eventBus, Events } from '../core/EventBus';
 import type {
   InputFrame,
   PhysicsFacade,
+  PhysicsSetup,
   PhysicsSnapshot,
   SurfaceContact,
   Vec3Tuple,
@@ -52,6 +53,10 @@ export class WorkerPhysicsFacade implements PhysicsFacade {
 
   reset(seed: number): void {
     this.post({ type: 'reset', seed });
+  }
+
+  applySetup(setup: PhysicsSetup): void {
+    this.post({ type: 'setup', setup });
   }
 
   querySurface(point: Vec3Tuple): Promise<SurfaceContact> {

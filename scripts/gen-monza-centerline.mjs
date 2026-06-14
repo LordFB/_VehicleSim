@@ -21,13 +21,13 @@ const p0 = metres[0];
 const b = metres[1];
 const ang = Math.atan2(b[0] - p0[0], b[1] - p0[1]);
 const c = Math.cos(-ang), s = Math.sin(-ang);
-const SCALE = 1 / 3;
+const SCALE = 1 / 2;
 const rotated = metres.map((p) => {
   const dx = p[0] - p0[0], dy = p[1] - p0[1];
   return [(dx * c - dy * s) * SCALE, (dx * s + dy * c) * SCALE];
 });
 
-// Uniform resample (~2.2 m steps) for even physics tiles + smooth ribbon.
+// Uniform resample (~1.3 m steps) for a high-resolution ribbon + fine physics tiles.
 function resample(line, step) {
   const out = [line[0]];
   let carry = 0;
@@ -47,7 +47,7 @@ function resample(line, step) {
   return out;
 }
 
-let sampled = resample(rotated, 2.2);
+let sampled = resample(rotated, 1.3);
 
 // The Rettifilo is dead-straight for its first ~110 m but the idx0→idx1 chord above
 // leaves a small residual lean. Measure it from the verified-linear run (samples 2..40,
@@ -59,6 +59,14 @@ let sampled = resample(rotated, 2.2);
   const cc = Math.cos(lean), ss = Math.sin(lean);
   sampled = sampled.map((p) => [p[0] * cc - p[1] * ss, p[0] * ss + p[1] * cc]);
 }
+
+// Mirror across X (negate x). The survey data, projected straight, puts Monza's first
+// corner toward +X. But the chase camera looks along the car's forward +Z, and in that
+// view world +X is screen-LEFT — so an un-mirrored +X corner would feel like a left turn
+// even though Monza's first corner is a right. Negating x makes the first corner go −X,
+// which reads as a RIGHT turn from the driver's seat, matching the real circuit. The
+// HUD mini-map compensates by flipping its own x-axis so it still shows "right".
+sampled = sampled.map((p) => [-p[0], p[1]]);
 
 sampled = sampled.map((p) => [+p[0].toFixed(2), +p[1].toFixed(2)]);
 sampled.push([sampled[0][0], sampled[0][1]]); // close the loop

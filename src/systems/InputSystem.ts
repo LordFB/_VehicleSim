@@ -1,6 +1,7 @@
 import type { InputFrame } from '../sim/types';
 import { INPUT } from '../core/Constants';
 import { eventBus, Events } from '../core/EventBus';
+import { DEFAULT_INPUT_SETUP, type InputSetup } from '../game/CarSetup';
 
 type TouchButton = {
   element: HTMLButtonElement;
@@ -39,6 +40,10 @@ export class InputSystem {
   private shiftUpLatch = false;
   private shiftDownLatch = false;
   private autoShift = false; // default to manual transmission
+  private setup: InputSetup = { ...DEFAULT_INPUT_SETUP };
+  private throttleState = 0; // smoothed throttle (for assist ramp)
+  private brakeState = 0; // smoothed brake
+  private lastUpdateMs = 0;
   private joystickPointerId: number | null = null;
   private joystickCenter = { x: 0, y: 0 };
   private joystickKnob: HTMLDivElement | null = null;
@@ -59,6 +64,18 @@ export class InputSystem {
     return this.autoShift;
   }
 
+  /** Apply assist/input setup (steering sensitivity & expo, throttle/brake smoothing). */
+  applyInputSetup(setup: InputSetup): void {
+    this.setup = { ...setup };
+  }
+
+  /** Set the transmission mode from the setup modal (keeps the HUD/event in sync). */
+  setAutoShift(auto: boolean): void {
+    if (this.autoShift === auto) return;
+    this.autoShift = auto;
+    eventBus.emit(Events.SHIFT_MODE_CHANGED, { autoShift: this.autoShift });
+  }
+
   hasGamepad(): boolean {
     return Boolean(navigator.getGamepads?.().find((p) => p));
   }
@@ -66,28 +83,40 @@ export class InputSystem {
   update(timestamp: number): InputFrame {
     const gamepad = navigator.getGamepads?.().find((pad) => pad) ?? null;
 
+    const dt = this.lastUpdateMs ? Math.min(0.1, Math.max(0, (timestamp - this.lastUpdateMs) / 1000)) : 0;
+    this.lastUpdateMs = timestamp;
+
     // --- Steering -------------------------------------------------------------
+    // Expo and sensitivity come from the setup (assists tab); expo defaults to the
+    // INPUT constant. Sensitivity scales the final command (clamped to ±1).
     const padSteerRaw = gamepad ? deadzone(gamepad.axes[0] ?? 0, INPUT.STICK_DEADZONE) : 0;
-    const padSteer = expo(padSteerRaw, INPUT.STEER_EXPO);
+    const padSteer = expo(padSteerRaw, this.setup.steerExpo);
     const keyboardSteer =
       (this.keys.has('ArrowLeft') || this.keys.has('KeyA') ? -1 : 0) +
       (this.keys.has('ArrowRight') || this.keys.has('KeyD') ? 1 : 0);
     // Right input must turn the car right; STEER_SIGN corrects the physics convention.
-    const steering = clamp(INPUT.STEER_SIGN * (keyboardSteer || padSteer || this.touchSteering), -1, 1);
+    const steeringRaw = INPUT.STEER_SIGN * (keyboardSteer || padSteer || this.touchSteering);
+    const steering = clamp(steeringRaw * this.setup.steerSensitivity, -1, 1);
 
     // --- Throttle / brake (analog triggers preferred) -------------------------
     const padThrottle = gamepad ? triggerValue(gamepad, PAD.RT, 5) : 0;
     const padBrake = gamepad ? triggerValue(gamepad, PAD.LT, 4) : 0;
-    const throttle = clamp01(Math.max(
+    const throttleTarget = clamp01(Math.max(
       this.keys.has('ArrowUp') || this.keys.has('KeyW') ? 1 : 0,
       padThrottle,
       this.touchThrottle ? 1 : 0,
     ));
-    const brake = clamp01(Math.max(
+    const brakeTarget = clamp01(Math.max(
       this.keys.has('ArrowDown') || this.keys.has('KeyS') ? 1 : 0,
       padBrake,
       this.touchBrake ? 1 : 0,
     ));
+    // Assist smoothing: ramp the pedals toward their target. 0 = instant (raw), 1 = very
+    // soft. A press always responds faster than a release for a connected feel.
+    const throttle = this.ramp(this.throttleState, throttleTarget, this.setup.throttleSmoothing, dt);
+    const brake = this.ramp(this.brakeState, brakeTarget, this.setup.brakeSmoothing, dt);
+    this.throttleState = throttle;
+    this.brakeState = brake;
 
     // --- Buttons (edge-triggered where one press = one action) ----------------
     const padShiftUp = buttonPressed(gamepad, PAD.RB);
@@ -153,6 +182,19 @@ export class InputSystem {
   private readonly onKeyUp = (event: KeyboardEvent): void => {
     this.keys.delete(event.code);
   };
+
+  /**
+   * Ramp a pedal value toward its target. `smoothing` 0 → instant; 1 → very soft. The
+   * time-constant is derived so the feel is frame-rate independent. Releasing is allowed
+   * to be a touch quicker than pressing so lifting off never feels laggy.
+   */
+  private ramp(current: number, target: number, smoothing: number, dt: number): number {
+    if (smoothing <= 0.001 || dt <= 0) return target;
+    const pressing = target > current;
+    const tau = smoothing * (pressing ? 0.28 : 0.18); // seconds to ~63%
+    const alpha = 1 - Math.exp(-dt / Math.max(0.001, tau));
+    return current + (target - current) * alpha;
+  }
 
   private consumeShiftUp(): boolean {
     const value = this.shiftUpLatch;

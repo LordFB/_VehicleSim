@@ -179,6 +179,7 @@
   "drivetrain": {
     "clutchTorqueCapacity": 650,
     "gearRatios": [3.18, 2.05, 1.52, 1.16, 0.92, 0.78],
+    "reverseRatio": 3.4,
     "finalDrive": 3.73,
     "differential": "open",
     "drivetrainEfficiency": 0.88,

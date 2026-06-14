@@ -124,6 +124,8 @@ export type EngineSpec = {
 export type DrivetrainSpec = {
   clutchTorqueCapacity: number;
   gearRatios: number[];
+  /** Reverse-gear ratio (magnitude). Defaults to the 1st-gear ratio if omitted. */
+  reverseRatio?: number;
   finalDrive: number;
   differential: 'open';
   drivetrainEfficiency: number;
@@ -250,8 +252,33 @@ export type PhysicsFacade = {
   step(renderTimeMs: number): void;
   getSnapshot(alpha?: number): PhysicsSnapshot | null;
   reset(seed: number): void;
+  applySetup(setup: PhysicsSetup): void;
   querySurface(point: Vec3Tuple): Promise<SurfaceContact>;
   dispose(): void;
+};
+
+/**
+ * Live-tunable physics overlay applied on top of the validated VehicleSpec. Every field
+ * is a multiplier or absolute that defaults to the identity, so an untouched setup leaves
+ * the validated dynamics bit-for-bit unchanged. The vehicle reads these when computing
+ * brake torque, downforce/drag, grip and ride height — it never rewrites the spec.
+ */
+export type PhysicsSetup = {
+  brakeForceScale: number; // ×maxTorque (1 = stock)
+  brakeBias: number; // 0..1 front share (absolute; replaces per-wheel bias split)
+  downforceScale: number; // ×liftArea (aero downforce)
+  dragScale: number; // ×dragArea
+  gripScale: number; // ×tire mu (both axes)
+  finalDriveScale: number; // ×final drive ratio
+};
+
+export const DEFAULT_PHYSICS_SETUP: PhysicsSetup = {
+  brakeForceScale: 1,
+  brakeBias: 0.6,
+  downforceScale: 1,
+  dragScale: 1,
+  gripScale: 1,
+  finalDriveScale: 1,
 };
 
 export type WorkerRequest =
@@ -260,6 +287,7 @@ export type WorkerRequest =
   | { type: 'input'; input: InputFrame }
   | { type: 'step'; renderTimeMs: number }
   | { type: 'reset'; seed: number }
+  | { type: 'setup'; setup: PhysicsSetup }
   | { type: 'querySurface'; id: number; point: Vec3Tuple };
 
 export type WorkerResponse =

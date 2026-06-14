@@ -32,6 +32,10 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
       if (snapshot) post({ type: 'snapshot', snapshot });
       return;
     }
+    if (message.type === 'setup') {
+      runtime.applySetup(message.setup);
+      return;
+    }
     if (message.type === 'querySurface') {
       post({ type: 'surface', id: message.id, contact: runtime.querySurface(message.point) });
     }

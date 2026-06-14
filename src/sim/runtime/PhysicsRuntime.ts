@@ -1,4 +1,4 @@
-import type { InputFrame, PhysicsSnapshot, SurfaceContact, VehicleSpec, WorldSpec } from '../types';
+import type { InputFrame, PhysicsSetup, PhysicsSnapshot, SurfaceContact, VehicleSpec, WorldSpec } from '../types';
 import { validateVehicleSpec, validateWorldSpec } from '../data/validation';
 import { SurfaceSystem } from './SurfaceSystem';
 import { Vehicle } from './Vehicle';
@@ -57,6 +57,10 @@ export class PhysicsRuntime {
     this.simTime = 0;
     this.lastRenderTimeMs = null;
     this.vehicle?.reset(seed);
+  }
+
+  applySetup(setup: PhysicsSetup): void {
+    this.vehicle?.applySetup(setup);
   }
 
   querySurface(point: [number, number, number]): SurfaceContact {

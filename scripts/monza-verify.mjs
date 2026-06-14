@@ -52,6 +52,67 @@ try {
   samples.forEach((s, i) => console.log(`  t=${(i + 1) * 0.5}s  ${s}`));
   console.log('PROBE after drive:', JSON.stringify(probe));
 
+  // STEERING HANDEDNESS: reset, accelerate, then steer RIGHT (ArrowRight/KeyD) and check
+  // the car's heading rotates toward a right turn and x moves the expected way.
+  await page.keyboard.press('KeyR');
+  await page.waitForTimeout(300);
+  const headBefore = await page.evaluate(() => {
+    const q = (window).__sim.latestSnapshot.chassis.orientation;
+    return Math.atan2(2 * (q[0] * q[2] + q[3] * q[1]), 1 - 2 * (q[0] * q[0] + q[1] * q[1]));
+  });
+  await page.keyboard.down('KeyW');
+  await page.waitForTimeout(2200); // build real speed first
+  await page.keyboard.down('KeyD'); // steer right
+  await page.waitForTimeout(1600);
+  await page.keyboard.up('KeyD');
+  await page.keyboard.up('KeyW');
+  const after = await page.evaluate(() => {
+    const s = (window).__sim.latestSnapshot;
+    const q = s.chassis.orientation;
+    const yawRate = s.telemetry.yawRate;
+    return {
+      heading: Math.atan2(2 * (q[0] * q[2] + q[3] * q[1]), 1 - 2 * (q[0] * q[0] + q[1] * q[1])),
+      x: s.chassis.position[0], yawRate,
+    };
+  });
+  const dHeading = after.heading - headBefore;
+  console.log(`STEER-RIGHT: headingΔ=${dHeading.toFixed(3)} rad  yawRate=${after.yawRate.toFixed(3)}  x=${after.x.toFixed(1)}`);
+
+  // REVERSE: reset (spawns in N), shift down to reverse (Q) while stopped, throttle, and
+  // confirm the car moves backward (-Z in its local frame) and the gear reads R.
+  await page.keyboard.press('KeyR');
+  await page.waitForTimeout(400);
+  await page.keyboard.press('KeyQ'); // N -> R
+  await page.waitForTimeout(150);
+  await page.keyboard.down('KeyW'); // throttle in reverse
+  await page.waitForTimeout(1500);
+  await page.keyboard.up('KeyW');
+  const rev = await page.evaluate(() => {
+    const s = (window).__sim.latestSnapshot;
+    return { gear: s.telemetry.gear, z: s.chassis.position[2], vz: s.linearVelocity[2], speed: s.telemetry.speedMps };
+  });
+  console.log(`REVERSE: gear=${rev.gear} (expect -1)  z=${rev.z.toFixed(2)}  vz=${rev.vz.toFixed(2)} (expect <0)  speed=${rev.speed.toFixed(2)}`);
+
+  // PHANTOM-COLLISION watch: accelerate down the main straight on the racing line and
+  // sample speed every 100ms. A barrier reaching onto the track shows as a sudden speed
+  // DROP with no driver braking. Flag any frame-to-frame loss > 4 m/s.
+  await page.keyboard.press('KeyR');
+  await page.waitForTimeout(300);
+  await page.keyboard.press('KeyE'); // N -> 1st gear (manual transmission)
+  await page.waitForTimeout(100);
+  await page.keyboard.down('KeyW');
+  let prevSp = 0, worstDrop = 0; const runSpeeds = [];
+  for (let i = 0; i < 45; i++) {
+    await page.waitForTimeout(100);
+    const sp = await page.evaluate(() => (window).__sim.latestSnapshot.telemetry.speedMps);
+    if (i > 3 && prevSp - sp > worstDrop) worstDrop = prevSp - sp;
+    prevSp = sp;
+    if (i % 9 === 0) runSpeeds.push(sp.toFixed(0));
+  }
+  await page.keyboard.up('KeyW');
+  console.log(`STRAIGHT-RUN speeds(m/s): ${runSpeeds.join(' -> ')}   worst single-frame drop=${worstDrop.toFixed(2)} m/s  (a phantom wall shows as a big unexplained drop)`);
+  console.log(`  (a RIGHT turn from +Z forward should swing the car toward -X / a consistent yawRate sign)`);
+
   // Top-down overview of the whole circuit via the debug hook (freezes the loop last).
   await page.evaluate(() => (window).__game.captureTopDown());
   await page.waitForTimeout(200);

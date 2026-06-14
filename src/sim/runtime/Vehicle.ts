@@ -1,5 +1,6 @@
 import type {
   InputFrame,
+  PhysicsSetup,
   PhysicsSnapshot,
   SurfaceContact,
   BarrierSpec,
@@ -10,6 +11,7 @@ import type {
   WheelSpec,
   WheelTelemetry,
 } from '../types';
+import { DEFAULT_PHYSICS_SETUP } from '../types';
 import { Quat } from '../math/Quat';
 import { clamp, interpolateCurve, lerp, Vec3, VEC3_FORWARD, VEC3_RIGHT, VEC3_UP } from '../math/Vec3';
 import { RigidBody } from './RigidBody';
@@ -67,6 +69,8 @@ export class Vehicle {
   private telemetry: TelemetryFrame;
   private previousSnapshot: PhysicsSnapshot | null = null;
   private currentSnapshot: PhysicsSnapshot;
+  // Live setup overlay (identity by default → stock validated physics).
+  private setup: PhysicsSetup = { ...DEFAULT_PHYSICS_SETUP };
 
   constructor(spec: VehicleSpec) {
     this.spec = spec;
@@ -82,6 +86,11 @@ export class Vehicle {
     this.lastInput = createNeutralInput();
     this.telemetry = this.createTelemetry(0, 0);
     this.currentSnapshot = this.createSnapshot(0, 0);
+  }
+
+  /** Apply a live setup overlay (brakes/aero/grip/ride/final-drive multipliers). */
+  applySetup(setup: PhysicsSetup): void {
+    this.setup = { ...setup };
   }
 
   reset(seed: number): void {
@@ -137,9 +146,12 @@ export class Vehicle {
     this.applySuspension(samples);
 
     const driven = WHEEL_ORDER.map((id) => this.wheels.get(id)).filter((wheel): wheel is WheelRuntimeState => Boolean(wheel?.spec.drive));
+    const drivetrainSpec = this.setup.finalDriveScale === 1
+      ? this.spec.drivetrain
+      : { ...this.spec.drivetrain, finalDrive: this.spec.drivetrain.finalDrive * this.setup.finalDriveScale };
     const drivetrain = solveDrivetrain(
       this.spec.engine,
-      this.spec.drivetrain,
+      drivetrainSpec,
       this.lastInput,
       driven.map((wheel) => wheel.angularVelocity),
       driven.map((wheel) => wheel.spec.id),
@@ -359,6 +371,11 @@ export class Vehicle {
       const vLat = contactVelocity.dot(wheelRight);
       const slipRatio = clamp((wheel.angularVelocity * wheel.spec.tire.radius - vLong) / Math.max(Math.abs(vLong), 3), -2, 2);
       const slipAngle = Math.atan2(vLat, Math.max(Math.abs(vLong), 1));
+      // Setup grip overlay: scale the contact friction both axes (1 = stock). A fresh
+      // contact object is used so the surface system's data is never mutated.
+      const gripSurface = this.setup.gripScale === 1
+        ? sample.contact
+        : { ...sample.contact, muLongitudinal: sample.contact.muLongitudinal * this.setup.gripScale, muLateral: sample.contact.muLateral * this.setup.gripScale };
       const forces = calculateTireForces({
         tire: wheel.spec.tire,
         normalLoad: wheel.telemetry.loadN,
@@ -366,7 +383,7 @@ export class Vehicle {
         slipAngleRad: slipAngle,
         camberRad: sample.camber,
         speedMps: vLong,
-        surface: sample.contact,
+        surface: gripSurface,
         dt,
         state: wheel.tireState,
       });
@@ -403,9 +420,13 @@ export class Vehicle {
       const tireForce = wheelForward.scaled(forces.fx).add(wheelRight.scaled(forces.fy));
       this.chassis.applyForce(tireForce, sample.contactPoint);
 
+      // Setup overlay: scale total brake force and split it by the configured bias
+      // (front share). Defaults reproduce the stock per-wheel bias exactly.
+      const isRear = wheel.spec.id.startsWith('rear');
+      const biasShare = isRear ? 1 - this.setup.brakeBias : this.setup.brakeBias;
       const requestedBrakeTorque =
-        this.lastInput.brake * this.spec.brakes.maxTorque * wheel.spec.brakeBias +
-        (wheel.spec.id.startsWith('rear') ? this.lastInput.handbrake * this.spec.brakes.handbrakeTorque : 0);
+        this.lastInput.brake * this.spec.brakes.maxTorque * this.setup.brakeForceScale * biasShare +
+        (isRear ? this.lastInput.handbrake * this.spec.brakes.handbrakeTorque : 0);
       const brakeFade = calculateBrakeFade(wheel.brakeTempC, this.spec.brakes.fadeStartC, this.spec.brakes.fadeEndC);
       const brakeTorque = requestedBrakeTorque * brakeFade;
       const brakeDirection = Math.sign(wheel.angularVelocity) || Math.sign(vLong) || 1;
@@ -454,8 +475,8 @@ export class Vehicle {
   private applyAero(): void {
     const speedSq = this.chassis.linearVelocity.lengthSq();
     if (speedSq < 0.01) return;
-    const drag = this.chassis.linearVelocity.normalized().scale(-0.5 * this.spec.aero.airDensity * this.spec.aero.dragArea * speedSq);
-    const downforce = VEC3_UP.scaled(-0.5 * this.spec.aero.airDensity * this.spec.aero.liftArea * speedSq);
+    const drag = this.chassis.linearVelocity.normalized().scale(-0.5 * this.spec.aero.airDensity * this.spec.aero.dragArea * this.setup.dragScale * speedSq);
+    const downforce = VEC3_UP.scaled(-0.5 * this.spec.aero.airDensity * this.spec.aero.liftArea * this.setup.downforceScale * speedSq);
     const cp = this.chassis.worldPoint(Vec3.fromTuple(this.spec.aero.centerOfPressure));
     this.chassis.applyForce(drag, cp);
     this.chassis.applyForce(downforce, cp);

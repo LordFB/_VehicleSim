@@ -13,10 +13,14 @@ import { SkidMarks } from '../render/SkidMarks';
 import { TireSmoke } from '../render/TireSmoke';
 import { TelemetryOverlay } from '../ui/TelemetryOverlay';
 import { Hud } from '../ui/Hud';
+import { SetupModal } from '../ui/SetupModal';
+import type { CarSetup } from '../game/CarSetup';
 import { LapTimer } from '../game/LapTimer';
 import { EngineAudio } from '../audio/EngineAudio';
 import { buildMonzaWorld, monzaCheckpoints, monzaTrackPath } from '../level/MonzaWorld';
 import { centerlineBounds } from '../level/MonzaTrack';
+import monzaFeatures from '../level/monzaFeatures.json';
+import type { BankingSpec } from '../level/LevelBuilder';
 import defaultVehicleJson from '../sim/data/defaultVehicle.json';
 import type { VehicleSpec, WorldSpec } from '../sim/types';
 
@@ -30,6 +34,7 @@ export class Game {
   private readonly level: LevelBuilder;
   private readonly telemetry: TelemetryOverlay;
   private readonly hud: Hud;
+  private setupModal: SetupModal | null = null;
   private readonly lapTimer: LapTimer;
   private readonly world: WorldSpec;
   private readonly audio = new EngineAudio();
@@ -71,8 +76,12 @@ export class Game {
     this.input = new InputSystem(container);
     this.telemetry = new TelemetryOverlay(container);
     this.hud = new Hud(container, defaultVehicleJson as VehicleSpec, this.lapTimer.trackPath());
-    this.level = new LevelBuilder(this.scene, this.world, monza.startFinish, monza.centerline);
-    this.scenery = new Scenery(centerlineBounds(monza.centerline), monzaTrackPath(monza.centerline));
+    this.level = new LevelBuilder(this.scene, this.world, monza.startFinish, monza.centerline, monzaFeatures.banking as unknown as BankingSpec);
+    this.scenery = new Scenery(
+      centerlineBounds(monza.centerline),
+      monzaTrackPath(monza.centerline),
+      monzaFeatures.forests,
+    );
     this.status = this.createStatus();
     this.init();
   }
@@ -84,6 +93,7 @@ export class Game {
     this.level.dispose();
     this.telemetry.dispose();
     this.hud.dispose();
+    this.setupModal?.dispose();
     this.audio.dispose();
     this.skyDome.dispose();
     this.scenery.dispose();
@@ -210,6 +220,14 @@ export class Game {
     this.status.textContent = 'Starting worker physics...';
     await this.physics.init(this.world);
     await this.physics.createVehicle(defaultVehicleJson as VehicleSpec);
+
+    // Car setup modal: live-apply physics to the worker and assists to the input system.
+    this.setupModal = new SetupModal(this.container, (setup: CarSetup) => {
+      this.physics.applySetup(setup.physics);
+      this.input.applyInputSetup(setup.input);
+      this.input.setAutoShift(setup.autoShift);
+    });
+
     this.vehicleView = new VehicleView(defaultVehicleJson as VehicleSpec, this.scene.environment);
     this.vehicleDebugView = new VehicleDebugView();
     this.skidMarks = new SkidMarks();

@@ -187,7 +187,10 @@ export class Hud {
     const spanX = Math.max(1, b.maxX - b.minX);
     const spanZ = Math.max(1, b.maxZ - b.minZ);
     const scale = (size * 0.86) / Math.max(spanX, spanZ);
-    const mapX = (x: number) => ox + size / 2 + (x - (b.minX + b.maxX) / 2) * scale;
+    // World x is mirrored (negated) so the chase-cam handedness matches the real
+    // circuit (see gen-monza-centerline.mjs); flip the map's x back so the silhouette
+    // still reads with the first corner to the right, as on the real track map.
+    const mapX = (x: number) => ox + size / 2 - (x - (b.minX + b.maxX) / 2) * scale;
     const mapY = (z: number) => oy + size / 2 - (z - (b.minZ + b.maxZ) / 2) * scale;
 
     // Track outline.
@@ -206,10 +209,11 @@ export class Hud {
     ctx.arc(mapX(this.trackPath[0][0]), mapY(this.trackPath[0][1]), 3, 0, Math.PI * 2);
     ctx.fill();
 
-    // Car arrow.
+    // Car arrow. The map's x-axis is mirrored (see mapX), so the heading rotation flips
+    // sign to keep the arrow pointing the way the car actually travels.
     const px = mapX(carX); const py = mapY(carZ);
     ctx.translate(px, py);
-    ctx.rotate(-headingRad);
+    ctx.rotate(headingRad);
     ctx.fillStyle = HUD.ACCENT;
     ctx.beginPath();
     ctx.moveTo(0, -7);
