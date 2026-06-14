@@ -15,8 +15,9 @@ import { TelemetryOverlay } from '../ui/TelemetryOverlay';
 import { Hud } from '../ui/Hud';
 import { LapTimer } from '../game/LapTimer';
 import { EngineAudio } from '../audio/EngineAudio';
+import { buildMonzaWorld, monzaCheckpoints, monzaTrackPath } from '../level/MonzaWorld';
+import { centerlineBounds } from '../level/MonzaTrack';
 import defaultVehicleJson from '../sim/data/defaultVehicle.json';
-import testWorldJson from '../sim/data/testWorld.json';
 import type { VehicleSpec, WorldSpec } from '../sim/types';
 
 export class Game {
@@ -29,10 +30,11 @@ export class Game {
   private readonly level: LevelBuilder;
   private readonly telemetry: TelemetryOverlay;
   private readonly hud: Hud;
-  private readonly lapTimer = new LapTimer();
+  private readonly lapTimer: LapTimer;
+  private readonly world: WorldSpec;
   private readonly audio = new EngineAudio();
   private readonly skyDome = new SkyDome();
-  private readonly scenery = new Scenery();
+  private readonly scenery: Scenery;
   private skidMarks: SkidMarks | null = null;
   private tireSmoke: TireSmoke | null = null;
   private readonly cameraPosition = new THREE.Vector3();
@@ -45,18 +47,32 @@ export class Game {
   private seed = SIM.INITIAL_SEED;
   private status: HTMLDivElement;
   private hasMoved = false;
+  private paused = false; // debug-only render freeze (see captureTopDown)
   private statusTimeout = 0;
   private readonly unsubs: Array<() => void> = [];
   private lastFrameMs = performance.now();
 
   constructor(container: HTMLElement) {
     this.container = container;
+
+    // Build the Autodromo Nazionale Monza layout once: the WorldSpec (physics surface
+    // zones + barriers), the start/finish line and the circuit centerline that drives
+    // the visual ribbon, the lap-timer checkpoints and the HUD mini-map silhouette.
+    const monza = buildMonzaWorld();
+    this.world = monza.world;
+    this.lapTimer = new LapTimer(
+      monzaCheckpoints(monza.centerline),
+      monza.startFinish,
+      monzaTrackPath(monza.centerline),
+    );
+
     this.renderer = this.createRenderer();
     this.camera = this.createCamera();
     this.input = new InputSystem(container);
     this.telemetry = new TelemetryOverlay(container);
     this.hud = new Hud(container, defaultVehicleJson as VehicleSpec, this.lapTimer.trackPath());
-    this.level = new LevelBuilder(this.scene, testWorldJson as WorldSpec, this.lapTimer.startFinish());
+    this.level = new LevelBuilder(this.scene, this.world, monza.startFinish, monza.centerline);
+    this.scenery = new Scenery(centerlineBounds(monza.centerline), monzaTrackPath(monza.centerline));
     this.status = this.createStatus();
     this.init();
   }
@@ -77,6 +93,26 @@ export class Game {
     this.vehicleDebugView?.dispose();
     for (const unsub of this.unsubs) unsub();
     this.renderer.dispose();
+  }
+
+  /**
+   * Debug-only: render one frame from a top-down orthographic-ish camera framing the
+   * whole circuit, so an automated check can photograph the layout. Not used in play.
+   */
+  captureTopDown(): void {
+    this.paused = true;
+    const b = centerlineBounds(buildMonzaWorld().centerline);
+    const cx = (b.minX + b.maxX) / 2;
+    const cz = (b.minZ + b.maxZ) / 2;
+    const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ);
+    const cam = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 4000);
+    cam.position.set(cx, span * 1.25, cz + 0.01);
+    cam.up.set(0, 0, 1);
+    cam.lookAt(cx, 0, cz);
+    const prevFog = this.scene.fog;
+    this.scene.fog = null;
+    this.renderer.render(this.scene, cam);
+    this.scene.fog = prevFog;
   }
 
   private init(): void {
@@ -172,7 +208,7 @@ export class Game {
 
   private async bootstrapPhysics(): Promise<void> {
     this.status.textContent = 'Starting worker physics...';
-    await this.physics.init(testWorldJson as WorldSpec);
+    await this.physics.init(this.world);
     await this.physics.createVehicle(defaultVehicleJson as VehicleSpec);
     this.vehicleView = new VehicleView(defaultVehicleJson as VehicleSpec, this.scene.environment);
     this.vehicleDebugView = new VehicleDebugView();
@@ -190,6 +226,7 @@ export class Game {
   }
 
   private animate(): void {
+    if (this.paused) return; // debug-only freeze for stable overview capture
     const now = performance.now();
     const delta = Math.min((now - this.lastFrameMs) / 1000, SIM.RENDER_DELTA_CAP);
     this.lastFrameMs = now;

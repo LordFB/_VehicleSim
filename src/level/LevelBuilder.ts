@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { COLORS } from '../core/Constants';
 import type { WorldSpec } from '../sim/types';
+import { TRACK_HALF_WIDTH, trackEdges, type CenterlinePoint } from './MonzaTrack';
 
 /** Plain rectangle spec for the rendered start/finish line (purely cosmetic). */
 export type StartFinishLine = {
@@ -10,22 +11,32 @@ export type StartFinishLine = {
   headingRad: number;
 };
 
+/**
+ * Renders the Monza circuit: a sunlit grass plane, the smooth asphalt ribbon swept
+ * along the real centerline, red/white apex kerbs, gravel run-offs, the checkered
+ * start/finish line and the boundary barriers. The drivable surface and grip come
+ * entirely from the WorldSpec zones (built in MonzaWorld); the ribbon here is the
+ * matching *visual* surface, swept as one smooth triangle strip so corners read curved
+ * rather than stair-stepped.
+ */
 export class LevelBuilder {
   private readonly disposables: Array<THREE.BufferGeometry | THREE.Material | THREE.Texture> = [];
 
   constructor(
     private readonly scene: THREE.Scene,
     private readonly world: WorldSpec,
-    private readonly startFinish?: StartFinishLine,
+    private readonly startFinish: StartFinishLine,
+    private readonly centerline: CenterlinePoint[],
   ) {}
 
   build(): void {
     this.createGround();
-    this.createRoad();
-    this.createZones();
+    this.createRibbon();
+    this.createEdgeLines();
+    this.createGravel();
+    this.createKerbs();
     this.createStartFinish();
     this.createBarriers();
-    this.createReferenceMarkers();
   }
 
   dispose(): void {
@@ -35,21 +46,53 @@ export class LevelBuilder {
 
   /** Large surrounding sunlit-grass plane so the world has a real horizon, not void. */
   private createGround(): void {
-    const geometry = new THREE.PlaneGeometry(2000, 2000, 1, 1);
+    const geometry = new THREE.PlaneGeometry(4000, 4000, 1, 1);
     const material = new THREE.MeshStandardMaterial({ color: COLORS.GRASS_FAR, roughness: 0.95, metalness: 0 });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.rotation.x = -Math.PI / 2;
-    mesh.position.y = -0.04;
+    mesh.position.y = -0.06;
     mesh.receiveShadow = true;
     mesh.name = 'ground-plane';
     this.scene.add(mesh);
     this.disposables.push(geometry, material);
   }
 
-  /** The asphalt ribbon, rendered as a textured PBR road that receives shadows. */
-  private createRoad(): void {
+  /** The asphalt ribbon: one smooth triangle strip swept ±half-width along the centerline. */
+  private createRibbon(): void {
+    const { left, right } = trackEdges(this.centerline);
+    const n = this.centerline.length;
+    const positions = new Float32Array((n + 1) * 2 * 3);
+    const uvs = new Float32Array((n + 1) * 2 * 2);
+    const y = 0.01;
+    let acc = 0;
+    for (let i = 0; i <= n; i++) {
+      const j = i % n;
+      const l = left[j];
+      const r = right[j];
+      if (i > 0) {
+        const pj = (i - 1) % n;
+        acc += Math.hypot(this.centerline[j].pos[0] - this.centerline[pj].pos[0], this.centerline[j].pos[1] - this.centerline[pj].pos[1]);
+      }
+      const base = i * 2 * 3;
+      positions[base + 0] = l[0]; positions[base + 1] = y; positions[base + 2] = l[1];
+      positions[base + 3] = r[0]; positions[base + 4] = y; positions[base + 5] = r[1];
+      const ub = i * 2 * 2;
+      const v = acc / (TRACK_HALF_WIDTH * 2);
+      uvs[ub + 0] = 0; uvs[ub + 1] = v;
+      uvs[ub + 2] = 1; uvs[ub + 3] = v;
+    }
+    const indices: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const a = i * 2, b = i * 2 + 1, c = (i + 1) * 2, d = (i + 1) * 2 + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+
     const texture = this.makeAsphaltTexture();
-    const geometry = new THREE.PlaneGeometry(64, 150, 1, 1);
     const material = new THREE.MeshStandardMaterial({
       color: COLORS.ASPHALT,
       roughness: 0.92,
@@ -57,54 +100,50 @@ export class LevelBuilder {
       map: texture,
     });
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.z = 12;
-    mesh.position.y = 0.0;
     mesh.receiveShadow = true;
-    mesh.name = 'asphalt-test-plane';
+    mesh.name = 'monza-ribbon';
     this.scene.add(mesh);
     this.disposables.push(geometry, material, texture);
   }
 
-  private createZones(): void {
+  /** Thin white edge lines down both verges of the ribbon (track limits). */
+  private createEdgeLines(): void {
+    const { left, right } = trackEdges(this.centerline);
+    const material = new THREE.LineBasicMaterial({ color: COLORS.PAINT });
+    this.disposables.push(material);
+    for (const edge of [left, right]) {
+      const pts = edge.map(([x, z]) => new THREE.Vector3(x, 0.03, z));
+      pts.push(pts[0].clone());
+      const geometry = new THREE.BufferGeometry().setFromPoints(pts);
+      const line = new THREE.Line(geometry, material);
+      line.name = 'track-edge';
+      this.scene.add(line);
+      this.disposables.push(geometry);
+    }
+  }
+
+  /** Gravel run-off patches from the world's gravel zones (circles). */
+  private createGravel(): void {
+    const material = new THREE.MeshStandardMaterial({ color: COLORS.GRAVEL, roughness: 0.98, metalness: 0 });
+    this.disposables.push(material);
     for (const zone of this.world.zones) {
-      // Kerbs get the iconic alternating red/white rumble-strip treatment.
-      if (zone.materialId === 'kerb' && zone.type === 'rect' && zone.size) {
-        this.createKerb(zone.id, zone.center, zone.size, zone.heightOffset ?? 0);
-        continue;
-      }
-      const material = new THREE.MeshStandardMaterial({
-        color: colorForMaterial(zone.materialId),
-        roughness: roughnessForMaterial(zone.materialId),
-        metalness: 0,
-        transparent: zone.materialId === 'painted_line',
-        opacity: zone.materialId === 'painted_line' ? 0.96 : 1,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -1,
-      });
-      let mesh: THREE.Mesh;
-      if (zone.type === 'ring' && zone.radius && zone.innerRadius) {
-        const geometry = new THREE.RingGeometry(zone.innerRadius, zone.radius, 96);
-        mesh = new THREE.Mesh(geometry, material);
-        mesh.rotation.x = -Math.PI / 2;
-        this.disposables.push(geometry, material);
-      } else if (zone.type === 'circle' && zone.radius) {
-        const geometry = new THREE.CircleGeometry(zone.radius, 64);
-        mesh = new THREE.Mesh(geometry, material);
-        mesh.rotation.x = -Math.PI / 2;
-        this.disposables.push(geometry, material);
-      } else {
-        const size = zone.size ?? [1, 1];
-        const geometry = new THREE.PlaneGeometry(size[0], size[1]);
-        mesh = new THREE.Mesh(geometry, material);
-        mesh.rotation.x = -Math.PI / 2;
-        this.disposables.push(geometry, material);
-      }
-      mesh.position.set(zone.center[0], (zone.heightOffset ?? 0) + 0.015, zone.center[1]);
-      mesh.receiveShadow = zone.materialId === 'grass' || zone.materialId === 'gravel';
-      mesh.name = `surface-zone-${zone.id}`;
+      if (zone.materialId !== 'gravel' || zone.type !== 'circle' || !zone.radius) continue;
+      const geometry = new THREE.CircleGeometry(zone.radius, 28);
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(zone.center[0], (zone.heightOffset ?? 0) + 0.012, zone.center[1]);
+      mesh.receiveShadow = true;
+      mesh.name = `gravel-${zone.id}`;
       this.scene.add(mesh);
+      this.disposables.push(geometry);
+    }
+  }
+
+  /** Red/white sawtooth apex kerbs from the world's kerb zones. */
+  private createKerbs(): void {
+    for (const zone of this.world.zones) {
+      if (zone.materialId !== 'kerb' || zone.type !== 'rect' || !zone.size) continue;
+      this.createKerb(zone.id, zone.center, zone.size, zone.heightOffset ?? 0);
     }
   }
 
@@ -115,7 +154,7 @@ export class LevelBuilder {
     const along = Math.max(size[0], size[1]);
     const across = Math.min(size[0], size[1]);
     const alongIsZ = size[1] >= size[0];
-    const segLen = 1.0;
+    const segLen = 0.8;
     const count = Math.max(1, Math.round(along / segLen));
     const actualLen = along / count;
     const redMat = new THREE.MeshStandardMaterial({ color: COLORS.KERB_RED, roughness: 0.7 });
@@ -138,9 +177,7 @@ export class LevelBuilder {
   }
 
   private createStartFinish(): void {
-    if (!this.startFinish) return;
     const sf = this.startFinish;
-    // Checkered start/finish bar.
     const texture = this.makeCheckerTexture();
     const geometry = new THREE.PlaneGeometry(sf.width, sf.depth);
     const material = new THREE.MeshStandardMaterial({
@@ -154,7 +191,7 @@ export class LevelBuilder {
     const mesh = new THREE.Mesh(geometry, material);
     mesh.rotation.x = -Math.PI / 2;
     mesh.rotation.z = -sf.headingRad;
-    mesh.position.set(sf.center[0], 0.02, sf.center[1]);
+    mesh.position.set(sf.center[0], 0.03, sf.center[1]);
     mesh.name = 'start-finish-line';
     this.scene.add(mesh);
     this.disposables.push(geometry, material, texture);
@@ -163,27 +200,39 @@ export class LevelBuilder {
   private createBarriers(): void {
     const material = new THREE.MeshStandardMaterial({ color: COLORS.BARRIER, roughness: 0.7, metalness: 0.1 });
     this.disposables.push(material);
-    for (const barrier of this.world.barriers) {
-      const geometry = new THREE.BoxGeometry(barrier.halfExtents[0] * 2, barrier.halfExtents[1] * 2, barrier.halfExtents[2] * 2);
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(...barrier.center);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.name = `barrier-${barrier.id}`;
-      this.scene.add(mesh);
-      this.disposables.push(geometry);
+    // Barriers repeat in their hundreds around the ribbon — instance them so the
+    // boundary costs a couple of draw calls, not one per wall (threejs-perf).
+    const boxes = this.world.barriers;
+    if (boxes.length === 0) return;
+    // Group by footprint so identical-extent boxes share an InstancedMesh.
+    const byKey = new Map<string, typeof boxes>();
+    for (const b of boxes) {
+      const key = b.halfExtents.join(',');
+      const arr = byKey.get(key) ?? [];
+      arr.push(b);
+      byKey.set(key, arr);
     }
-  }
-
-  private createReferenceMarkers(): void {
-    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xf7d154 });
-    const geometry = new THREE.TorusGeometry(12, 0.05, 8, 96);
-    const skidpad = new THREE.Mesh(geometry, markerMaterial);
-    skidpad.rotation.x = Math.PI / 2;
-    skidpad.position.set(-22, 0.04, 18);
-    skidpad.name = 'skidpad-radius-marker';
-    this.scene.add(skidpad);
-    this.disposables.push(geometry, markerMaterial);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const one = new THREE.Vector3(1, 1, 1);
+    const pos = new THREE.Vector3();
+    let g = 0;
+    for (const [key, arr] of byKey) {
+      const [hx, hy, hz] = key.split(',').map(Number);
+      const geometry = new THREE.BoxGeometry(hx * 2, hy * 2, hz * 2);
+      this.disposables.push(geometry);
+      const inst = new THREE.InstancedMesh(geometry, material, arr.length);
+      inst.name = `barriers-${g++}`;
+      inst.castShadow = true;
+      inst.receiveShadow = true;
+      arr.forEach((b, i) => {
+        pos.set(b.center[0], b.center[1], b.center[2]);
+        m.compose(pos, q, one);
+        inst.setMatrixAt(i, m);
+      });
+      inst.instanceMatrix.needsUpdate = true;
+      this.scene.add(inst);
+    }
   }
 
   /** Subtle procedural asphalt: faint mottled noise so the road isn't a flat slab. */
@@ -201,7 +250,7 @@ export class LevelBuilder {
     }
     const texture = new THREE.CanvasTexture(canvas);
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(8, 18);
+    texture.repeat.set(1, 1);
     texture.anisotropy = 4;
     texture.colorSpace = THREE.SRGBColorSpace;
     return texture;
@@ -224,20 +273,4 @@ export class LevelBuilder {
     texture.colorSpace = THREE.SRGBColorSpace;
     return texture;
   }
-}
-
-function colorForMaterial(materialId: string): number {
-  if (materialId === 'painted_line') return COLORS.PAINT;
-  if (materialId === 'kerb') return COLORS.KERB_RED;
-  if (materialId === 'grass') return COLORS.GRASS;
-  if (materialId === 'gravel') return COLORS.GRAVEL;
-  if (materialId === 'ice') return COLORS.ICE;
-  return COLORS.ASPHALT;
-}
-
-function roughnessForMaterial(materialId: string): number {
-  if (materialId === 'ice') return 0.12;
-  if (materialId === 'painted_line') return 0.5;
-  if (materialId === 'gravel') return 0.98;
-  return 0.95;
 }

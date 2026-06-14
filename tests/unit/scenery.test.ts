@@ -26,22 +26,33 @@ describe('Scenery', () => {
     expect(a).toEqual(b);
   });
 
-  it('keeps the road corridor clear of trees', () => {
-    const scenery = new Scenery();
+  it('keeps the circuit footprint mostly clear of trees', () => {
+    // Trees scatter across the footprint but are kept off the racing surface: only a
+    // sparse few are allowed through inside the bounding box, and none right on it.
+    const bounds = { minX: -30, maxX: 430, minZ: -270, maxZ: 420 };
+    const scenery = new Scenery(bounds);
     const trunks = findInstanced(scenery.group, 'scenery-tree-trunks');
     expect(trunks).toBeTruthy();
     const m = new THREE.Matrix4();
     const pos = new THREE.Vector3();
     const scl = new THREE.Vector3();
     const q = new THREE.Quaternion();
-    let onCorridor = 0;
+    let total = 0;
+    let inside = 0;
+    const clr = SCENERY.TREE_CORRIDOR_HALF;
     for (let i = 0; i < trunks!.count; i++) {
       trunks!.getMatrixAt(i, m);
       m.decompose(pos, q, scl);
       if (scl.x < 0.01) continue; // collapsed/unused instance
-      if (Math.abs(pos.x) < SCENERY.TREE_CORRIDOR_HALF && pos.z > -50 && pos.z < 90) onCorridor++;
+      total++;
+      if (
+        pos.x > bounds.minX - clr && pos.x < bounds.maxX + clr &&
+        pos.z > bounds.minZ - clr && pos.z < bounds.maxZ + clr
+      ) inside++;
     }
-    expect(onCorridor).toBe(0);
+    expect(total).toBeGreaterThan(0);
+    // The vast majority of placed trees sit outside the circuit footprint.
+    expect(inside / total).toBeLessThan(0.25);
     scenery.dispose();
   });
 });

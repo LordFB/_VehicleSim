@@ -17,11 +17,24 @@ import { SCENERY } from '../core/Constants';
  *  - a scattered forest ring around the arena, denser the further out
  *  - low rolling background hills on the horizon under the haze
  */
+export type TrackBounds = { minX: number; maxX: number; minZ: number; maxZ: number };
+
 export class Scenery {
   readonly group = new THREE.Group();
   private readonly disposables: Array<THREE.BufferGeometry | THREE.Material> = [];
+  private readonly bounds: TrackBounds;
+  private readonly postLine: Array<[number, number]>;
 
-  constructor() {
+  /**
+   * @param bounds   the circuit's footprint; trees are kept outside it (plus a margin)
+   *                 so the forest of the royal park rings the track without spawning on
+   *                 the racing surface. Defaults to a small central box if omitted.
+   * @param postLine a polyline (x,z) along the track for marshalling the reflector
+   *                 posts; defaults to a short straight if omitted.
+   */
+  constructor(bounds?: TrackBounds, postLine?: Array<[number, number]>) {
+    this.bounds = bounds ?? { minX: -22, maxX: 22, minZ: -50, maxZ: 90 };
+    this.postLine = postLine ?? defaultPostLine();
     this.group.name = 'scenery';
     const rng = mulberry32(SCENERY.SEED);
     this.buildHills(rng);
@@ -79,18 +92,28 @@ export class Scenery {
     const pos = new THREE.Vector3();
     const scl = new THREE.Vector3();
     const tint = new THREE.Color();
+    // Scatter over the whole circuit footprint (the royal park) and reject any tree
+    // that falls on or near the track; trees fill both the infield and the surrounds.
+    const cx = (this.bounds.minX + this.bounds.maxX) / 2;
+    const cz = (this.bounds.minZ + this.bounds.maxZ) / 2;
+    const spanX = this.bounds.maxX - this.bounds.minX;
+    const spanZ = this.bounds.maxZ - this.bounds.minZ;
+    const half = Math.max(spanX, spanZ) / 2 + SCENERY.TREE_OUTER_R;
+    const clearance = SCENERY.TREE_CORRIDOR_HALF; // keep trees this far off the ribbon edge
     let placed = 0;
     let guard = 0;
-    while (placed < count && guard < count * 8) {
+    while (placed < count && guard < count * 12) {
       guard++;
-      // Polar scatter: keep a clear arena radius around the playable strip, then
-      // let density taper outward to the tree-line distance.
-      const ang = rng() * Math.PI * 2;
-      const r = SCENERY.TREE_INNER_R + Math.pow(rng(), 0.6) * (SCENERY.TREE_OUTER_R - SCENERY.TREE_INNER_R);
-      const x = Math.cos(ang) * r;
-      const z = Math.sin(ang) * r + SCENERY.TREE_CENTER_Z;
-      // Don't drop trees on the road corridor itself.
-      if (Math.abs(x) < SCENERY.TREE_CORRIDOR_HALF && z > -50 && z < 90) continue;
+      const x = cx + (rng() * 2 - 1) * half;
+      const z = cz + (rng() * 2 - 1) * half;
+      // Don't drop trees inside the circuit footprint (plus clearance) — the racing
+      // surface and its immediate verges stay clear.
+      if (
+        x > this.bounds.minX - clearance && x < this.bounds.maxX + clearance &&
+        z > this.bounds.minZ - clearance && z < this.bounds.maxZ + clearance
+      ) {
+        if (rng() < 0.82) continue; // mostly clear inside the box; let a few infield trees through sparsely
+      }
 
       const scale = SCENERY.TREE_MIN_H + rng() * (SCENERY.TREE_MAX_H - SCENERY.TREE_MIN_H);
       const yaw = rng() * Math.PI * 2;
@@ -135,16 +158,20 @@ export class Scenery {
     this.group.add(trunks, lower, upper);
   }
 
-  /** Reflector marker posts along both verges of the road corridor. */
+  /**
+   * Reflector marker posts marching down both verges of the track. Posts are placed at
+   * evenly spaced arc-length stations along {@link postLine}, offset to either side by
+   * the post setback along the local left-normal, so they follow every corner.
+   */
   private buildPosts(): void {
-    const perSide = SCENERY.POST_COUNT;
-    const total = perSide * 2;
+    const stations = this.postStations();
+    const total = stations.length;
     const postGeo = new THREE.CylinderGeometry(0.05, 0.06, SCENERY.POST_HEIGHT, 5);
     const capGeo = new THREE.BoxGeometry(0.16, 0.12, 0.04);
     this.disposables.push(postGeo, capGeo);
 
-    const posts = new THREE.InstancedMesh(postGeo, this.postMaterial(), total);
-    const caps = new THREE.InstancedMesh(capGeo, this.reflectorMaterial(), total);
+    const posts = new THREE.InstancedMesh(postGeo, this.postMaterial(), Math.max(1, total));
+    const caps = new THREE.InstancedMesh(capGeo, this.reflectorMaterial(), Math.max(1, total));
     posts.name = 'scenery-posts';
     caps.name = 'scenery-reflectors';
     posts.castShadow = true;
@@ -154,23 +181,44 @@ export class Scenery {
     const q = new THREE.Quaternion();
     const pos = new THREE.Vector3();
     const one = new THREE.Vector3(1, 1, 1);
-    let i = 0;
-    for (let s = 0; s < 2; s++) {
-      const x = s === 0 ? -SCENERY.POST_X : SCENERY.POST_X;
-      for (let n = 0; n < perSide; n++) {
-        const z = SCENERY.POST_START_Z + n * SCENERY.POST_SPACING;
-        pos.set(x, SCENERY.POST_HEIGHT * 0.5, z);
-        m.compose(pos, q, one);
-        posts.setMatrixAt(i, m);
-        pos.set(x, SCENERY.POST_HEIGHT * 0.82, z);
-        m.compose(pos, q, one);
-        caps.setMatrixAt(i, m);
-        i++;
-      }
-    }
+    stations.forEach(([x, z], i) => {
+      pos.set(x, SCENERY.POST_HEIGHT * 0.5, z);
+      m.compose(pos, q, one);
+      posts.setMatrixAt(i, m);
+      pos.set(x, SCENERY.POST_HEIGHT * 0.82, z);
+      m.compose(pos, q, one);
+      caps.setMatrixAt(i, m);
+    });
     posts.instanceMatrix.needsUpdate = true;
     caps.instanceMatrix.needsUpdate = true;
     this.group.add(posts, caps);
+  }
+
+  /** Evenly spaced post positions on both verges, following the track line. */
+  private postStations(): Array<[number, number]> {
+    const line = this.postLine;
+    const out: Array<[number, number]> = [];
+    const setback = SCENERY.POST_X;
+    // Walk arc length, dropping a pair of posts every POST_SPACING metres.
+    let acc = 0;
+    let next = 0;
+    for (let i = 1; i < line.length; i++) {
+      const [ax, az] = line[i - 1];
+      const [bx, bz] = line[i];
+      const dx = bx - ax, dz = bz - az;
+      const segLen = Math.hypot(dx, dz);
+      if (segLen < 1e-4) continue;
+      while (acc + segLen >= next) {
+        const t = (next - acc) / segLen;
+        const px = ax + dx * t, pz = az + dz * t;
+        const nx = -dz / segLen, nz = dx / segLen; // left-normal
+        out.push([px + nx * setback, pz + nz * setback]);
+        out.push([px - nx * setback, pz - nz * setback]);
+        next += SCENERY.POST_SPACING;
+      }
+      acc += segLen;
+    }
+    return out;
   }
 
   private hillMaterial(): THREE.Material {
@@ -229,6 +277,15 @@ export class Scenery {
 const UP = new THREE.Vector3(0, 1, 0);
 const ZERO = new THREE.Vector3(0, -9999, 0);
 const ZERO_SCALE = new THREE.Vector3(0.0001, 0.0001, 0.0001);
+
+/** Fallback post line (a short straight) when no track line is supplied. */
+function defaultPostLine(): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (let z = SCENERY.POST_START_Z; z <= SCENERY.POST_START_Z + SCENERY.POST_COUNT * SCENERY.POST_SPACING; z += SCENERY.POST_SPACING) {
+    out.push([0, z]);
+  }
+  return out;
+}
 
 /** Small deterministic PRNG so scenery layout is stable across runs (seeded). */
 function mulberry32(seed: number): () => number {

@@ -21,43 +21,41 @@ export type LapState = {
   justCompleted: boolean;
 };
 
-type Checkpoint = { x: number; z: number; radius: number };
-
-// A there-and-back loop laid on the drivable asphalt (x in [-16,16], z in [-38,72]).
-// Up the right, around the far end, back down the left, through start/finish.
-const CHECKPOINTS: Checkpoint[] = [
-  { x: 7, z: 30, radius: 9 },
-  { x: 7, z: 60, radius: 9 },
-  { x: 0, z: 68, radius: 9 },
-  { x: -7, z: 60, radius: 9 },
-  { x: -7, z: 30, radius: 9 },
-  { x: 0, z: 4, radius: 9 }, // approach back to start/finish
-];
-
-const START_FINISH: StartFinishLine = {
-  center: [0, 0],
-  width: 14,
-  depth: 1.4,
-  headingRad: 0,
-};
+export type Checkpoint = { x: number; z: number; radius: number };
 
 export class LapTimer {
-  private state: LapState = this.fresh();
+  private state!: LapState;
   private lastZ = 0;
   private bestSplits: number[] = []; // ms at each checkpoint on the best lap
   private currentSplits: number[] = [];
   private startMs = 0;
+  private readonly checkpoints: Checkpoint[];
+  private readonly startFinishLine: StartFinishLine;
+  private readonly path: Array<[number, number]>;
 
-  startFinish(): StartFinishLine {
-    return START_FINISH;
+  /**
+   * @param checkpoints  ordered gates the car must hit before banking a lap
+   * @param startFinish  the start/finish plane
+   * @param path         polyline for the mini-map (defaults to checkpoints + S/F)
+   */
+  constructor(checkpoints: Checkpoint[], startFinish: StartFinishLine, path?: Array<[number, number]>) {
+    this.checkpoints = checkpoints;
+    this.startFinishLine = startFinish;
+    this.path = path ?? [
+      [startFinish.center[0], startFinish.center[1]],
+      ...checkpoints.map((c) => [c.x, c.z] as [number, number]),
+      [startFinish.center[0], startFinish.center[1]],
+    ];
+    this.state = this.fresh();
   }
 
-  /** Polyline (x,z) of the checkpoint loop incl. start/finish, for the mini-map. */
+  startFinish(): StartFinishLine {
+    return this.startFinishLine;
+  }
+
+  /** Polyline (x,z) of the track for the mini-map. */
   trackPath(): Array<[number, number]> {
-    const pts: Array<[number, number]> = [[START_FINISH.center[0], START_FINISH.center[1]]];
-    for (const c of CHECKPOINTS) pts.push([c.x, c.z]);
-    pts.push([START_FINISH.center[0], START_FINISH.center[1]]);
-    return pts;
+    return this.path;
   }
 
   reset(): void {
@@ -75,7 +73,7 @@ export class LapTimer {
       this.state.currentMs = nowMs - this.startMs;
 
       // Hit the next checkpoint if within its radius.
-      const next = CHECKPOINTS[this.state.checkpointIndex];
+      const next = this.checkpoints[this.state.checkpointIndex];
       if (next && Math.hypot(x - next.x, z - next.z) <= next.radius) {
         this.currentSplits[this.state.checkpointIndex] = this.state.currentMs;
         this.state.checkpointIndex += 1;
@@ -85,7 +83,7 @@ export class LapTimer {
       this.state.deltaMs = this.computeDelta();
 
       // Completing a lap: all checkpoints hit, then cross start/finish (z: + -> 0 region).
-      if (this.state.checkpointIndex >= CHECKPOINTS.length && this.crossedStartFinish(z)) {
+      if (this.state.checkpointIndex >= this.checkpoints.length && this.crossedStartFinish(z)) {
         this.bankLap();
       }
     } else if (this.crossedStartFinish(z) && z >= -2) {
@@ -145,7 +143,7 @@ export class LapTimer {
       deltaMs: null,
       lapCount: 0,
       checkpointIndex: 0,
-      checkpointCount: CHECKPOINTS.length,
+      checkpointCount: this.checkpoints.length,
       justCompleted: false,
     };
   }

@@ -171,26 +171,27 @@ export const AUDIO = {
 // the empty horizon. Deterministic via SEED so e2e screenshots stay stable.
 export const SCENERY = {
   SEED: 1337,
-  // Background hills ringing the arena, sitting in the haze band.
-  HILL_COUNT: 26,
-  HILL_RADIUS: 420,
-  HILL_MIN_R: 40,
-  HILL_MAX_R: 95,
+  // Background hills ringing the circuit, sitting in the haze band.
+  HILL_COUNT: 30,
+  HILL_RADIUS: 620,
+  HILL_MIN_R: 50,
+  HILL_MAX_R: 120,
   HILL_COLOR: 0x4a6a52, // hazy blue-green distance
-  // Scattered conifer forest ring.
-  TREE_COUNT: 320,
-  TREE_INNER_R: 34, // clear arena radius around the playable strip
-  TREE_OUTER_R: 240,
-  TREE_CENTER_Z: 14, // bias scatter toward the road's centre
-  TREE_CORRIDOR_HALF: 22, // keep trees off the road corridor in x
+  // Conifer forest of the royal park: scattered across the whole footprint, kept off
+  // the racing surface (see Scenery.buildForest). Dense enough to fill infield + ring.
+  TREE_COUNT: 900,
+  TREE_INNER_R: 34, // (legacy) unused by the footprint scatter
+  TREE_OUTER_R: 90, // margin of forest beyond the circuit bounding box
+  TREE_CENTER_Z: 14, // (legacy)
+  TREE_CORRIDOR_HALF: 10, // clearance kept off the ribbon edge (scaled metres)
   TREE_MIN_H: 4.5,
-  TREE_MAX_H: 11,
+  TREE_MAX_H: 12,
   TRUNK_COLOR: 0x4a3826,
-  // Reflector posts down both verges.
-  POST_COUNT: 26, // per side
-  POST_X: 8.5,
+  // Reflector posts down both verges, marching along the track line.
+  POST_COUNT: 26, // (legacy) used only by the fallback straight
+  POST_X: 2.6, // lateral offset from centerline to the post (just outside the verge)
   POST_HEIGHT: 1.05,
-  POST_SPACING: 6,
+  POST_SPACING: 14, // metres of arc length between post pairs
   POST_START_Z: -42,
   POST_COLOR: 0xcfd4d8,
   REFLECTOR_COLOR: 0xff8a3c, // warm amber retroreflector
