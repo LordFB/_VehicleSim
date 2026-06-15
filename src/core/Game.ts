@@ -11,16 +11,15 @@ import { SkyDome } from '../render/SkyDome';
 import { Scenery } from '../render/Scenery';
 import { SkidMarks } from '../render/SkidMarks';
 import { TireSmoke } from '../render/TireSmoke';
+import { getRaceCameraPose } from '../render/RaceCamera';
 import { TelemetryOverlay } from '../ui/TelemetryOverlay';
 import { Hud } from '../ui/Hud';
 import { SetupModal } from '../ui/SetupModal';
 import type { CarSetup } from '../game/CarSetup';
 import { LapTimer } from '../game/LapTimer';
 import { EngineAudio } from '../audio/EngineAudio';
-import { buildMonzaWorld, monzaCheckpoints, monzaTrackPath } from '../level/MonzaWorld';
-import { centerlineBounds } from '../level/MonzaTrack';
-import monzaFeatures from '../level/monzaFeatures.json';
-import type { BankingSpec } from '../level/LevelBuilder';
+import { getTrackDefinition } from '../level/tracks';
+import type { TrackDefinition } from '../level/TrackDefinition';
 import defaultVehicleJson from '../sim/data/defaultVehicle.json';
 import type { VehicleSpec, WorldSpec } from '../sim/types';
 
@@ -37,6 +36,7 @@ export class Game {
   private setupModal: SetupModal | null = null;
   private readonly lapTimer: LapTimer;
   private readonly world: WorldSpec;
+  private readonly track: TrackDefinition;
   private readonly audio = new EngineAudio();
   private readonly skyDome = new SkyDome();
   private readonly scenery: Scenery;
@@ -46,6 +46,7 @@ export class Game {
   private readonly cameraTarget = new THREE.Vector3();
   private readonly desiredCameraPosition = new THREE.Vector3();
   private readonly desiredCameraTarget = new THREE.Vector3();
+  private cameraInitialized = false;
   private currentFov = CAMERA.FOV;
   private vehicleView: VehicleView | null = null;
   private vehicleDebugView: VehicleDebugView | null = null;
@@ -60,15 +61,12 @@ export class Game {
   constructor(container: HTMLElement) {
     this.container = container;
 
-    // Build the Autodromo Nazionale Monza layout once: the WorldSpec (physics surface
-    // zones + barriers), the start/finish line and the circuit centerline that drives
-    // the visual ribbon, the lap-timer checkpoints and the HUD mini-map silhouette.
-    const monza = buildMonzaWorld();
-    this.world = monza.world;
+    this.track = getTrackDefinition(new URLSearchParams(window.location.search));
+    this.world = this.track.world;
     this.lapTimer = new LapTimer(
-      monzaCheckpoints(monza.centerline),
-      monza.startFinish,
-      monzaTrackPath(monza.centerline),
+      this.track.checkpoints,
+      this.track.startFinish,
+      this.track.trackPath,
     );
 
     this.renderer = this.createRenderer();
@@ -76,11 +74,18 @@ export class Game {
     this.input = new InputSystem(container);
     this.telemetry = new TelemetryOverlay(container);
     this.hud = new Hud(container, defaultVehicleJson as VehicleSpec, this.lapTimer.trackPath());
-    this.level = new LevelBuilder(this.scene, this.world, monza.startFinish, monza.centerline, monzaFeatures.banking as unknown as BankingSpec);
+    this.level = new LevelBuilder(
+      this.scene,
+      this.world,
+      this.track.startFinish,
+      this.track.centerline,
+      this.track.metadata.scaledTrackHalfWidth,
+      this.track.features,
+    );
     this.scenery = new Scenery(
-      centerlineBounds(monza.centerline),
-      monzaTrackPath(monza.centerline),
-      monzaFeatures.forests,
+      this.track.bounds,
+      this.track.trackPath,
+      this.track.features.forests,
     );
     this.status = this.createStatus();
     this.init();
@@ -111,11 +116,11 @@ export class Game {
    */
   captureTopDown(): void {
     this.paused = true;
-    const b = centerlineBounds(buildMonzaWorld().centerline);
+    const b = this.track.bounds;
     const cx = (b.minX + b.maxX) / 2;
     const cz = (b.minZ + b.maxZ) / 2;
     const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ);
-    const cam = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 4000);
+    const cam = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, Math.max(4000, span * 3));
     cam.position.set(cx, span * 1.25, cz + 0.01);
     cam.up.set(0, 0, 1);
     cam.lookAt(cx, 0, cz);
@@ -146,6 +151,7 @@ export class Game {
     renderer.toneMappingExposure = LIGHTING.EXPOSURE;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.domElement.dataset.engine = 'three.js';
     this.container.appendChild(renderer.domElement);
     window.addEventListener('resize', () => this.onResize());
     return renderer;
@@ -153,7 +159,7 @@ export class Game {
 
   private createCamera(): THREE.PerspectiveCamera {
     const camera = new THREE.PerspectiveCamera(CAMERA.FOV, window.innerWidth / window.innerHeight, CAMERA.NEAR, CAMERA.FAR);
-    camera.position.set(CAMERA.FOLLOW_OFFSET.x, CAMERA.FOLLOW_OFFSET.y, CAMERA.FOLLOW_OFFSET.z);
+    camera.position.set(0, CAMERA.FOLLOW_HEIGHT, -CAMERA.FOLLOW_DISTANCE);
     camera.lookAt(0, 0.8, 0);
     return camera;
   }
@@ -239,8 +245,8 @@ export class Game {
     gameState.started = true;
     const pad = this.input.hasGamepad();
     this.status.textContent = pad
-      ? 'Controller: LS steer · RT/LT throttle/brake · RB/LB shift · A handbrake · View=auto/manual'
-      : 'A/D steer · W/S throttle/brake · E/Q shift · G auto/manual · Space handbrake · R reset · T telemetry · M mute · (plug in a controller for the real feel)';
+      ? `${this.track.displayName} - Controller: LS steer - RT/LT throttle/brake - RB/LB shift - A handbrake - View=auto/manual`
+      : `${this.track.displayName} - A/D steer - W/S throttle/brake - E/Q shift - G auto/manual - Space handbrake - R reset - T telemetry - M mute`;
   }
 
   private animate(): void {
@@ -269,40 +275,26 @@ export class Game {
   }
 
   private updateCamera(snapshot: NonNullable<typeof gameState.latestSnapshot>, delta: number): void {
-    const position = snapshot.chassis.position;
-    const orientation = new THREE.Quaternion(...snapshot.chassis.orientation);
-    const localOffset = new THREE.Vector3(CAMERA.FOLLOW_OFFSET.x, CAMERA.FOLLOW_OFFSET.y, CAMERA.FOLLOW_OFFSET.z).applyQuaternion(orientation);
-    const localTarget = new THREE.Vector3(CAMERA.LOOK_AHEAD.x, CAMERA.LOOK_AHEAD.y, CAMERA.LOOK_AHEAD.z).applyQuaternion(orientation);
-    this.desiredCameraPosition.set(position[0], position[1], position[2]).add(localOffset);
-    this.desiredCameraTarget.set(position[0], position[1], position[2]).add(localTarget);
-    const lerpAlpha = 1 - Math.pow(1 - CAMERA.LERP, delta * 60);
-    this.cameraPosition.lerp(this.desiredCameraPosition, lerpAlpha);
-    this.cameraTarget.lerp(this.desiredCameraTarget, lerpAlpha);
+    const pose = getRaceCameraPose(snapshot);
+    this.desiredCameraPosition.copy(pose.position);
+    this.desiredCameraTarget.copy(pose.target);
+    if (!this.cameraInitialized) {
+      this.cameraPosition.copy(this.desiredCameraPosition);
+      this.cameraTarget.copy(this.desiredCameraTarget);
+      this.cameraInitialized = true;
+    }
+    const positionAlpha = 1 - Math.pow(1 - CAMERA.LERP, delta * 60);
+    const targetAlpha = 1 - Math.pow(1 - CAMERA.TARGET_LERP, delta * 60);
+    this.cameraPosition.lerp(this.desiredCameraPosition, positionAlpha);
+    this.cameraTarget.lerp(this.desiredCameraTarget, targetAlpha);
 
-    // Speed-scaled FOV kick + slip/impact micro-shake (juice).
-    const speed = Math.hypot(snapshot.linearVelocity[0], snapshot.linearVelocity[2]);
-    const speedT = Math.min(1, speed / CAMERA.FOV_SPEED_REF_MPS);
-    const targetFov = CAMERA.FOV + CAMERA.FOV_SPEED_GAIN * speedT;
-    this.currentFov += (targetFov - this.currentFov) * (1 - Math.pow(1 - CAMERA.FOV_LERP, delta * 60));
+    this.currentFov += (pose.fov - this.currentFov) * (1 - Math.pow(1 - CAMERA.FOV_LERP, delta * 60));
     if (Math.abs(this.camera.fov - this.currentFov) > 0.01) {
       this.camera.fov = this.currentFov;
       this.camera.updateProjectionMatrix();
     }
 
-    let peakSlip = 0;
-    for (const id of ['frontLeft', 'frontRight', 'rearLeft', 'rearRight'] as const) {
-      const w = snapshot.telemetry.wheels[id];
-      peakSlip = Math.max(peakSlip, Math.abs(w.slipRatio), Math.abs(w.slipAngleRad));
-    }
-    const shake = peakSlip > CAMERA.SHAKE_SLIP_THRESHOLD
-      ? Math.min(CAMERA.SHAKE_MAX, (peakSlip - CAMERA.SHAKE_SLIP_THRESHOLD) * 0.18)
-      : 0;
-
     this.camera.position.copy(this.cameraPosition);
-    if (shake > 0) {
-      this.camera.position.x += (Math.random() - 0.5) * shake;
-      this.camera.position.y += (Math.random() - 0.5) * shake;
-    }
     this.camera.lookAt(this.cameraTarget);
   }
 
@@ -321,6 +313,7 @@ export class Game {
     this.physics.reset(this.seed);
     this.lapTimer.reset();
     this.skidMarks?.clear();
+    this.cameraInitialized = false;
     this.hasMoved = false;
     this.status.classList.remove('status--hidden');
   }

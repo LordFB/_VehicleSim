@@ -52,10 +52,30 @@ export type SurfaceZoneSpec = {
   heightOffset?: number;
 };
 
+export type TerrainTrackSample = {
+  pos: [number, number];
+  tangent: [number, number];
+  left: [number, number];
+  normal: Vec3Tuple;
+  curvature: number;
+  s: number;
+  realS?: number;
+  elevation: number;
+  camber: number;
+  sector?: string;
+};
+
+export type TerrainTrackSpec = {
+  samples: TerrainTrackSample[];
+  halfWidth: number;
+  shoulderWidth: number;
+};
+
 export type BarrierSpec = {
   id: string;
   center: Vec3Tuple;
   halfExtents: Vec3Tuple;
+  yawRad?: number;
 };
 
 export type WorldSpec = {
@@ -64,6 +84,11 @@ export type WorldSpec = {
   materials: SurfaceMaterial[];
   zones: SurfaceZoneSpec[];
   barriers: BarrierSpec[];
+  terrainTrack?: TerrainTrackSpec;
+  spawn?: {
+    position: Vec3Tuple;
+    yawRad: number;
+  };
 };
 
 export type CurvePoint = [number, number];

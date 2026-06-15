@@ -6,18 +6,20 @@ export const SIM = {
 };
 
 export const CAMERA = {
-  FOV: 60,
+  FOV: 54,
   NEAR: 0.05,
   FAR: 1200,
-  FOLLOW_OFFSET: { x: 0, y: 4.2, z: -8.5 },
-  LOOK_AHEAD: { x: 0, y: 1.1, z: 5.5 },
-  LERP: 0.12,
-  // Speed-scaled FOV kick (Forza-style sense of speed) and slip/impact shake.
-  FOV_SPEED_GAIN: 9, // extra degrees approached at high speed
-  FOV_SPEED_REF_MPS: 75, // speed at which most of the FOV gain is reached
+  FOLLOW_DISTANCE: 6.8,
+  FOLLOW_HEIGHT: 2.35,
+  LOOK_AHEAD_DISTANCE: 15,
+  LOOK_AHEAD_SPEED_GAIN: 6,
+  LOOK_HEIGHT: 1.15,
+  LERP: 0.16,
+  TARGET_LERP: 0.22,
+  // Restrained speed FOV for racing distance judgment instead of arcade zoom.
+  FOV_SPEED_GAIN: 3,
+  FOV_SPEED_REF_MPS: 90,
   FOV_LERP: 0.08,
-  SHAKE_SLIP_THRESHOLD: 0.35, // |slip| above which micro-shake begins
-  SHAKE_MAX: 0.12, // metres of positional jitter at peak
 };
 
 // Warm golden-hour lighting rig (Forza Horizon identity).
@@ -65,12 +67,16 @@ export const COLORS = {
   GRASS_FAR: 0x4f8a3c, // surrounding ground plane
   GRAVEL: 0x9a8e72,
   ICE: 0x9fd3e2,
-  CAR_BODY: 0x1f5fbf,
-  CAR_BODY_ACCENT: 0x0e3f8c,
+  CAR_BODY: 0x202733, // dark carbon-fibre tub
+  CAR_BODY_ACCENT: 0xe23232, // livery accent (hot red racing stripe)
+  CAR_ACCENT_2: 0xf2c200, // secondary livery (amber/gold flashes)
   CAR_GLASS: 0x0a0f16,
-  CAR_RIM: 0xb9bfc6,
-  CAR_DISC: 0x4a4d52,
-  WHEEL: 0x16171a,
+  CAR_RIM: 0xc8cdd4, // machined alloy
+  CAR_DISC: 0x2b2d31, // carbon brake disc
+  CAR_HALO: 0x16181d, // matte titanium halo
+  CAR_WING: 0x15171c, // carbon aero surfaces
+  CAR_DRIVER: 0x101216, // helmet / cockpit shadow
+  WHEEL: 0x121316, // slick tyre
   BARRIER: 0x6b7480,
   BARRIER_STRIPE: 0xd24a3a,
   FORCE_LONGITUDINAL: 0x35d07f,

@@ -61,6 +61,14 @@ export class Vehicle {
   readonly id = 'player';
   readonly spec: VehicleSpec;
   readonly chassis: RigidBody;
+  // Center of mass expressed in the chassis-origin frame (from the spec). The rigid
+  // body integrates about its center of mass, so chassis.position IS the COM in world
+  // space; every spec-local attachment point (wheel hardpoints, aero CoP, and the
+  // rendered/snapshot body origin) is defined relative to the chassis origin and must
+  // be re-expressed relative to the COM before its torque arm is computed — otherwise
+  // gravity and the suspension/tire forces pivot about the wrong point and the car
+  // tips far too easily.
+  private readonly comOffset: Vec3;
   private readonly wheels = new Map<WheelId, WheelRuntimeState>();
   private readonly drivetrainState: DrivetrainState;
   private steeringAngle = 0;
@@ -72,13 +80,18 @@ export class Vehicle {
   // Live setup overlay (identity by default → stock validated physics).
   private setup: PhysicsSetup = { ...DEFAULT_PHYSICS_SETUP };
 
-  constructor(spec: VehicleSpec) {
+  constructor(spec: VehicleSpec, private readonly spawn?: { position: [number, number, number]; yawRad: number }) {
     this.spec = spec;
+    this.comOffset = Vec3.fromTuple(spec.chassis.centerOfMass);
+    const spawnOrigin = spawn?.position ?? [0, 0.72, 0];
+    // Spawn is given as the chassis origin; place the body at the COM (origin + offset,
+    // unrotated at spawn since yaw is about the vertical axis only).
     this.chassis = new RigidBody({
       mass: spec.chassis.mass,
       inertia: spec.chassis.inertia,
-      position: [0, 0.72, 0],
+      position: [spawnOrigin[0] + this.comOffset.x, spawnOrigin[1] + this.comOffset.y, spawnOrigin[2] + this.comOffset.z],
     });
+    if (spawn) this.chassis.orientation.copy(Quat.fromAxisAngle(VEC3_UP, spawn.yawRad));
     for (const wheelSpec of spec.wheels) {
       this.wheels.set(wheelSpec.id, this.createWheelState(wheelSpec));
     }
@@ -95,8 +108,16 @@ export class Vehicle {
 
   reset(seed: number): void {
     const lateralOffset = ((seed % 97) - 48) * 0.001;
-    this.chassis.position.set(lateralOffset, 0.72, 0);
-    this.chassis.orientation.copy(Quat.identity());
+    const base = this.spawn?.position ?? [0, 0.72, 0];
+    const yaw = this.spawn?.yawRad ?? 0;
+    const right = new Vec3(Math.cos(yaw), 0, -Math.sin(yaw));
+    // base is the chassis origin; offset to the COM (yaw-only rotation at reset).
+    this.chassis.position.set(
+      base[0] + right.x * lateralOffset + this.comOffset.x,
+      base[1] + this.comOffset.y,
+      base[2] + right.z * lateralOffset + this.comOffset.z,
+    );
+    this.chassis.orientation.copy(this.spawn ? Quat.fromAxisAngle(VEC3_UP, yaw) : Quat.identity());
     this.chassis.linearVelocity.set(0, 0, 0);
     this.chassis.angularVelocity.set(0, 0, 0);
     this.steeringAngle = 0;
@@ -201,6 +222,10 @@ export class Vehicle {
     const halfZ = Math.abs(axX.z) * half.x + Math.abs(axZ.z) * half.z;
 
     for (const barrier of barriers) {
+      if (barrier.yawRad !== undefined) {
+        this.solveOrientedBarrier(barrier, half, axX, axZ);
+        continue;
+      }
       const dx = this.chassis.position.x - barrier.center[0];
       const dz = this.chassis.position.z - barrier.center[2];
       const penetrationX = barrier.halfExtents[0] + halfX - Math.abs(dx);
@@ -231,6 +256,49 @@ export class Vehicle {
       // Scrub a little angular momentum on impact (scaled by how hard the hit was).
       this.chassis.angularVelocity.scale(0.86);
     }
+  }
+
+  private solveOrientedBarrier(barrier: BarrierSpec, chassisHalf: Vec3, chassisAxisX: Vec3, chassisAxisZ: Vec3): void {
+    const yaw = barrier.yawRad ?? 0;
+    const sin = Math.sin(yaw);
+    const cos = Math.cos(yaw);
+    const dx = this.chassis.position.x - barrier.center[0];
+    const dz = this.chassis.position.z - barrier.center[2];
+    // Barrier local axes: +Z follows the guardrail, +X is lateral thickness.
+    const localX = dx * cos - dz * sin;
+    const localZ = dx * sin + dz * cos;
+    const carHalfX =
+      Math.abs(chassisAxisX.x * cos - chassisAxisX.z * sin) * chassisHalf.x +
+      Math.abs(chassisAxisZ.x * cos - chassisAxisZ.z * sin) * chassisHalf.z;
+    const carHalfZ =
+      Math.abs(chassisAxisX.x * sin + chassisAxisX.z * cos) * chassisHalf.x +
+      Math.abs(chassisAxisZ.x * sin + chassisAxisZ.z * cos) * chassisHalf.z;
+    const penetrationX = barrier.halfExtents[0] + carHalfX - Math.abs(localX);
+    const penetrationZ = barrier.halfExtents[2] + carHalfZ - Math.abs(localZ);
+    const verticalOverlap =
+      Math.abs(this.chassis.position.y - barrier.center[1]) <
+      barrier.halfExtents[1] + chassisHalf.y;
+    if (penetrationX <= 0 || penetrationZ <= 0 || !verticalOverlap) return;
+
+    const resolveLocalX = penetrationX < penetrationZ;
+    const normalLocalX = resolveLocalX ? Math.sign(localX) || 1 : 0;
+    const normalLocalZ = resolveLocalX ? 0 : Math.sign(localZ) || 1;
+    const normalWorldX = normalLocalX * cos + normalLocalZ * sin;
+    const normalWorldZ = -normalLocalX * sin + normalLocalZ * cos;
+    const penetration = resolveLocalX ? penetrationX : penetrationZ;
+    this.chassis.position.x += normalWorldX * penetration;
+    this.chassis.position.z += normalWorldZ * penetration;
+    const vn = this.chassis.linearVelocity.x * normalWorldX + this.chassis.linearVelocity.z * normalWorldZ;
+    if (vn < 0) {
+      this.chassis.linearVelocity.x -= normalWorldX * vn * 1.18;
+      this.chassis.linearVelocity.z -= normalWorldZ * vn * 1.18;
+    }
+    this.chassis.angularVelocity.scale(0.86);
+  }
+
+  /** World position of a point given in the chassis-origin frame (COM-corrected). */
+  private chassisLocalToWorld(local: Vec3): Vec3 {
+    return this.chassis.worldPoint(local.clone().sub(this.comOffset));
   }
 
   private createWheelState(spec: WheelSpec): WheelRuntimeState {
@@ -284,7 +352,7 @@ export class Vehicle {
     for (const id of WHEEL_ORDER) {
       const wheel = this.wheels.get(id);
       if (!wheel) continue;
-      const hardpoint = this.chassis.worldPoint(Vec3.fromTuple(wheel.spec.localPosition));
+      const hardpoint = this.chassisLocalToWorld(Vec3.fromTuple(wheel.spec.localPosition));
       const surface = surfaceSystem.query(hardpoint);
       const groundY = surface.point[1];
       const distanceToGround = hardpoint.y - groundY - wheel.spec.tire.radius;
@@ -477,7 +545,7 @@ export class Vehicle {
     if (speedSq < 0.01) return;
     const drag = this.chassis.linearVelocity.normalized().scale(-0.5 * this.spec.aero.airDensity * this.spec.aero.dragArea * this.setup.dragScale * speedSq);
     const downforce = VEC3_UP.scaled(-0.5 * this.spec.aero.airDensity * this.spec.aero.liftArea * this.setup.downforceScale * speedSq);
-    const cp = this.chassis.worldPoint(Vec3.fromTuple(this.spec.aero.centerOfPressure));
+    const cp = this.chassisLocalToWorld(Vec3.fromTuple(this.spec.aero.centerOfPressure));
     this.chassis.applyForce(drag, cp);
     this.chassis.applyForce(downforce, cp);
   }
@@ -519,7 +587,7 @@ export class Vehicle {
     for (const id of WHEEL_ORDER) {
       const wheel = this.wheels.get(id)!;
       const local = Vec3.fromTuple(wheel.spec.localPosition);
-      const center = this.chassis.worldPoint(local).sub(VEC3_UP.scaled(wheel.spec.suspension.restLength - wheel.compression));
+      const center = this.chassisLocalToWorld(local).sub(VEC3_UP.scaled(wheel.spec.suspension.restLength - wheel.compression));
       const steerQuat = Quat.fromAxisAngle(VEC3_UP, wheel.spec.steer ? this.steeringAngle : 0);
       const spinQuat = Quat.fromAxisAngle(VEC3_RIGHT, wheel.spinAngle);
       const camberQuat = Quat.fromAxisAngle(VEC3_FORWARD, wheel.telemetry.camberRad);
@@ -535,11 +603,15 @@ export class Vehicle {
       };
       wheels[id] = wheel.snapshot;
     }
+    // Report the chassis *origin* pose (not the COM) so the rendered body, which is
+    // modeled about the origin, sits where designed even though the body integrates
+    // about the COM.
+    const originWorld = this.chassis.position.clone().sub(this.chassis.worldVector(this.comOffset));
     return {
       sequence: this.sequence,
       simTime,
       alpha,
-      chassis: this.chassis.pose(),
+      chassis: { position: originWorld.toTuple(), orientation: this.chassis.orientation.toTuple() },
       linearVelocity: this.chassis.linearVelocity.toTuple(),
       angularVelocity: this.chassis.angularVelocity.toTuple(),
       wheels,
