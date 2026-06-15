@@ -1,0 +1,12 @@
+{
+  "name": "@trackprint/test-fixtures",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@trackprint/track-core": "file:../track-core"
+  }
+}

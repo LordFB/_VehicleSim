@@ -39,7 +39,7 @@ export class Game {
   private readonly track: TrackDefinition;
   private readonly audio = new EngineAudio();
   private readonly skyDome = new SkyDome();
-  private readonly scenery: Scenery;
+  private readonly scenery: Scenery | null = null;
   private skidMarks: SkidMarks | null = null;
   private tireSmoke: TireSmoke | null = null;
   private readonly cameraPosition = new THREE.Vector3();
@@ -58,10 +58,10 @@ export class Game {
   private readonly unsubs: Array<() => void> = [];
   private lastFrameMs = performance.now();
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, track?: TrackDefinition) {
     this.container = container;
 
-    this.track = getTrackDefinition(new URLSearchParams(window.location.search));
+    this.track = track ?? getTrackDefinition(new URLSearchParams(window.location.search));
     this.world = this.track.world;
     this.lapTimer = new LapTimer(
       this.track.checkpoints,
@@ -82,11 +82,13 @@ export class Game {
       this.track.metadata.scaledTrackHalfWidth,
       this.track.features,
     );
-    this.scenery = new Scenery(
-      this.track.bounds,
-      this.track.trackPath,
-      this.track.features.forests,
-    );
+    if (this.track.features.generatedScenery !== false) {
+      this.scenery = new Scenery(
+        this.track.bounds,
+        this.track.trackPath,
+        this.track.features.forests,
+      );
+    }
     this.status = this.createStatus();
     this.init();
   }
@@ -101,7 +103,7 @@ export class Game {
     this.setupModal?.dispose();
     this.audio.dispose();
     this.skyDome.dispose();
-    this.scenery.dispose();
+    this.scenery?.dispose();
     this.skidMarks?.dispose();
     this.tireSmoke?.dispose();
     this.vehicleView?.dispose();
@@ -168,7 +170,7 @@ export class Game {
     // Tall gradient sky + PMREM environment built from the same gradient so paint reflects it.
     this.scene.environment = this.skyDome.buildEnvironment(this.renderer);
     this.scene.add(this.skyDome.mesh);
-    this.scene.add(this.scenery.group);
+    if (this.scenery) this.scene.add(this.scenery.group);
     this.scene.fog = new THREE.Fog(SKY.FOG_COLOR, SKY.FOG_NEAR, SKY.FOG_FAR);
 
     // Cool sky / warm ground ambient fill.

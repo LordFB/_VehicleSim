@@ -61,3 +61,25 @@ test('nordschleife track renders and exposes asphalt contact', async ({ page }) 
   expect(canvasPng.byteLength).toBeGreaterThan(10_000);
   expect(errors).toEqual([]);
 });
+
+test('track editor route renders TrackPrint without booting the driving simulator', async ({ page }) => {
+  await page.goto('/track-editor?e2e=1');
+  await expect(page.getByRole('main')).toHaveClass(/trackprint-editor/);
+  await expect(page.getByRole('heading', { name: /trackprint/i })).toBeVisible();
+  await expect(page.locator('.telemetry')).toHaveCount(0);
+  await expect(page.locator('canvas[data-engine]')).toHaveCount(0);
+});
+
+test('track editor launches the simulator on the edited TrackPrint track', async ({ page }) => {
+  await page.goto('/track-editor?e2e=1&debug=1');
+  await page.getByRole('button', { name: 'Race edited track in simulator' }).click();
+  await page.waitForURL(/track=trackprint/);
+  await expect(page.locator('.telemetry')).toBeVisible();
+  const trackName = await page.locator('.status').textContent();
+  expect(trackName).toContain('TrackPrint');
+  const material = await page.evaluate(() => {
+    const snapshot = (window as unknown as { __sim?: { latestSnapshot?: { telemetry: { wheels: { frontLeft: { surfaceMaterialId: string } } } } } }).__sim?.latestSnapshot;
+    return snapshot?.telemetry.wheels.frontLeft.surfaceMaterialId ?? null;
+  });
+  expect(material).toBe('asphalt_new');
+});

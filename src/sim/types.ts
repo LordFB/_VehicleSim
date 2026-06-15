@@ -71,6 +71,19 @@ export type TerrainTrackSpec = {
   shoulderWidth: number;
 };
 
+export type MeshSurfaceLayerSpec = {
+  id: string;
+  materialId: SurfaceMaterialId;
+  positions: number[];
+  indices: number[];
+  normals?: number[];
+};
+
+export type MeshSurfaceSpec = {
+  layers: MeshSurfaceLayerSpec[];
+  cellSize?: number;
+};
+
 export type BarrierSpec = {
   id: string;
   center: Vec3Tuple;
@@ -85,6 +98,7 @@ export type WorldSpec = {
   zones: SurfaceZoneSpec[];
   barriers: BarrierSpec[];
   terrainTrack?: TerrainTrackSpec;
+  meshSurface?: MeshSurfaceSpec;
   spawn?: {
     position: Vec3Tuple;
     yawRad: number;

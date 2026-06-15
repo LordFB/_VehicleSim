@@ -2,14 +2,32 @@ import monzaFeatures from './monzaFeatures.json';
 import { buildMonzaWorld, monzaCheckpoints, monzaTrackPath } from './MonzaWorld';
 import { centerlineBounds, centerlineLength, TRACK_HALF_WIDTH } from './MonzaTrack';
 import { buildNordschleifeTrack } from './NordschleifeWorld';
+import {
+  loadTrackPrintPreviewTrack,
+  loadTrackPrintPreviewTrackForBrowser,
+  type TrackPrintPreviewStorage,
+} from './trackprintPreviewStorage';
 import type { TrackDefinition } from './TrackDefinition';
 import type { BankingSpec } from './LevelBuilder';
 import type { TerrainTrackSample } from '../sim/types';
 
-export function getTrackDefinition(params: URLSearchParams): TrackDefinition {
+export function getTrackDefinition(params: URLSearchParams, trackPrintStorage?: TrackPrintPreviewStorage): TrackDefinition {
   const requested = params.get('track')?.toLowerCase();
   if (requested === 'nordschleife' || requested === 'nord') return buildNordschleifeTrack();
+  if (requested === 'trackprint' || requested === 'trackprint-preview') {
+    const preview = loadTrackPrintPreviewTrack(trackPrintStorage);
+    if (preview) return preview;
+  }
   return buildMonzaTrack();
+}
+
+export async function getTrackDefinitionForBrowser(params: URLSearchParams): Promise<TrackDefinition> {
+  const requested = params.get('track')?.toLowerCase();
+  if (requested === 'trackprint' || requested === 'trackprint-preview') {
+    const preview = await loadTrackPrintPreviewTrackForBrowser();
+    if (preview) return preview;
+  }
+  return getTrackDefinition(params);
 }
 
 export function buildMonzaTrack(): TrackDefinition {

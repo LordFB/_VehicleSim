@@ -14,6 +14,22 @@ export function validateWorldSpec(spec: WorldSpec): WorldSpec {
   for (const zone of spec.zones) {
     if (!ids.has(zone.materialId)) throw new Error(`Zone ${zone.id} references missing material ${zone.materialId}.`);
   }
+  for (const layer of spec.meshSurface?.layers ?? []) {
+    if (!ids.has(layer.materialId)) throw new Error(`Mesh surface layer ${layer.id} references missing material ${layer.materialId}.`);
+    if (layer.positions.length % 3 !== 0) throw new Error(`Mesh surface layer ${layer.id} positions must be xyz triples.`);
+    if (layer.normals && layer.normals.length !== layer.positions.length) {
+      throw new Error(`Mesh surface layer ${layer.id} normals must match positions.`);
+    }
+    if (layer.indices.length % 3 !== 0) throw new Error(`Mesh surface layer ${layer.id} indices must be triangles.`);
+    for (const value of layer.positions) {
+      if (!Number.isFinite(value)) throw new Error(`Mesh surface layer ${layer.id} has non-finite positions.`);
+    }
+    for (const index of layer.indices) {
+      if (!Number.isInteger(index) || index < 0 || index * 3 + 2 >= layer.positions.length) {
+        throw new Error(`Mesh surface layer ${layer.id} has an out-of-range index.`);
+      }
+    }
+  }
   return spec;
 }
 

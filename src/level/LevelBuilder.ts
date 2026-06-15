@@ -7,6 +7,7 @@ import {
   createTerrainCorridorGeometry,
   roadSurfaceHeight,
 } from './GeneratedTrackMeshes';
+import { createTrackPrintSurfaceVisual, createTrackPrintTerrainVisual } from './TrackPrintTerrainVisual';
 import type { TrackFeatures } from './TrackDefinition';
 import { TRACK_HALF_WIDTH } from './MonzaTrack';
 
@@ -50,7 +51,9 @@ export class LevelBuilder {
 
   build(): void {
     this.createGround();
+    this.createTrackPrintTerrain();
     this.createGeneratedTerrain();
+    this.createTrackPrintSurface();
     this.createShoulders();
     this.createRibbon();
     this.createEdgeLines();
@@ -70,6 +73,7 @@ export class LevelBuilder {
 
   /** Large surrounding sunlit-grass plane so the world has a real horizon, not void. */
   private createGround(): void {
+    if (this.features.generatedGround === false) return;
     const bounds = this.bounds();
     const span = Math.max(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ) + 600;
     const geometry = new THREE.PlaneGeometry(Math.max(4000, span), Math.max(4000, span), 1, 1);
@@ -86,6 +90,7 @@ export class LevelBuilder {
   }
 
   private createGeneratedTerrain(): void {
+    if (this.features.generatedTerrain === false) return;
     const terrain = this.world.terrainTrack;
     if (!terrain) return;
     const geometry = createTerrainCorridorGeometry(terrain.samples, terrain.halfWidth, terrain.shoulderWidth);
@@ -103,8 +108,25 @@ export class LevelBuilder {
     this.disposables.push(geometry, material);
   }
 
+  private createTrackPrintTerrain(): void {
+    const terrain = this.features.trackPrintTerrain;
+    if (!terrain) return;
+    const asset = createTrackPrintTerrainVisual(terrain, this.features.trackPrintSkirt);
+    this.scene.add(asset.object);
+    this.disposables.push(...asset.disposables);
+  }
+
+  private createTrackPrintSurface(): void {
+    const surface = this.features.trackPrintSurface;
+    if (!surface) return;
+    const asset = createTrackPrintSurfaceVisual(surface);
+    this.scene.add(asset.object);
+    this.disposables.push(...asset.disposables);
+  }
+
   /** The asphalt ribbon: one smooth triangle strip swept ±half-width along the centerline. */
   private createRibbon(): void {
+    if (this.features.trackPrintSurface) return;
     const geometry = createDetailedRoadGeometry(this.centerline, this.trackHalfWidth);
 
     const texture = this.makeAsphaltTexture();
@@ -123,9 +145,16 @@ export class LevelBuilder {
   }
 
   private createShoulders(): void {
+    if (this.features.trackPrintSurface) return;
     const shoulder = this.world.terrainTrack?.shoulderWidth;
     if (!shoulder || shoulder <= 0) return;
-    const material = new THREE.MeshStandardMaterial({ color: COLORS.GRAVEL, roughness: 0.98, metalness: 0 });
+    const material = new THREE.MeshStandardMaterial({
+      color: this.features.textureStyle === 'trackprint' ? 0x69747a : COLORS.GRAVEL,
+      emissive: this.features.textureStyle === 'trackprint' ? 0x34424a : 0x000000,
+      emissiveIntensity: this.features.textureStyle === 'trackprint' ? 0.12 : 0,
+      roughness: 0.98,
+      metalness: 0,
+    });
     this.disposables.push(material);
     for (const side of [-1, 1] as const) {
       const geometry = this.createOffsetStripGeometry(this.trackHalfWidth, this.trackHalfWidth + shoulder, side, 0.004);
@@ -139,6 +168,7 @@ export class LevelBuilder {
 
   /** Thin white edge lines down both verges of the ribbon (track limits). */
   private createEdgeLines(): void {
+    if (this.features.trackPrintSurface) return;
     const { left, right } = this.trackEdges();
     const material = new THREE.LineBasicMaterial({ color: COLORS.PAINT });
     this.disposables.push(material);
@@ -183,6 +213,7 @@ export class LevelBuilder {
   }
 
   private createTerrainKerbs(): void {
+    if (this.features.generatedKerbs === false) return;
     if (!this.world.terrainTrack) return;
     const candidates = this.centerline
       .slice(0, -1)

@@ -12,6 +12,57 @@ describe('physics runtime', () => {
     expect(contact.muLongitudinal).toBeLessThan(0.3);
   });
 
+  it('uses mesh surface collisions before generated terrain or flat zones', () => {
+    const world: WorldSpec = {
+      ...(testWorldJson as WorldSpec),
+      defaultMaterialId: 'grass',
+      terrainTrack: {
+        halfWidth: 4,
+        shoulderWidth: 2,
+        samples: [
+          {
+            pos: [0, 0],
+            tangent: [1, 0],
+            left: [0, 1],
+            normal: [0, 1, 0],
+            curvature: 0,
+            s: 0,
+            elevation: 0,
+            camber: 0,
+          },
+          {
+            pos: [10, 0],
+            tangent: [1, 0],
+            left: [0, 1],
+            normal: [0, 1, 0],
+            curvature: 0,
+            s: 10,
+            elevation: 0,
+            camber: 0,
+          },
+        ],
+      },
+      meshSurface: {
+        cellSize: 4,
+        layers: [
+          {
+            id: 'raised-asphalt',
+            materialId: 'asphalt_new',
+            positions: [-2, 2.5, -2, 2, 2.5, -2, -2, 2.5, 2, 2, 2.5, 2],
+            indices: [0, 1, 2, 2, 1, 3],
+            normals: [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0],
+          },
+        ],
+      },
+    };
+    const runtime = new PhysicsRuntime(world);
+    const contact = runtime.querySurface([0, 5, 0]);
+
+    expect(contact.materialId).toBe('asphalt_new');
+    expect(contact.point[1]).toBeCloseTo(2.5, 5);
+    expect(contact.normal).toEqual([0, 1, 0]);
+  });
+
   it('replays the same input stream deterministically', () => {
     const first = runReplay();
     const second = runReplay();

@@ -5,6 +5,7 @@
 - Runtime: browser, Vite.
 - Language: TypeScript.
 - Renderer: Three.js 0.184.
+- Editor UI: React 18 for the TrackPrint `/track-editor` authoring route.
 - Simulation: custom TypeScript physics runtime in a Web Worker.
 - Tests: Vitest for unit/scenario coverage, Playwright for browser smoke checks.
 
@@ -13,6 +14,7 @@
 - Physics owns vehicle transforms and surface contacts.
 - Three.js builds visual track/vehicle/scenery objects from deterministic data.
 - `WorldSpec` describes materials, surface zones, barriers, and optional terrain-backed track data.
+- TrackPrint editor documents compile through an adapter into deterministic `TrackDefinition`/`WorldSpec` data; editor meshes are not physics authority.
 - Repeated scenery and barriers should use `InstancedMesh` when possible.
 
 ## Commands
