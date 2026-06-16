@@ -30,7 +30,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   applyStationValueFalloff,
   applyWidthFalloff,
@@ -112,6 +112,15 @@ import {
   serializeTrackPrintTerrainMesh,
 } from './vehicleSimExport';
 import { saveTrackPrintPreviewTrackForBrowser } from '../../level/trackprintPreviewStorage';
+import {
+  TRACKPRINT_PACKAGE_EXTENSION,
+  TRACKPRINT_PACKAGE_MIME,
+  decodeTrackPrintPackage,
+  encodeTrackPrintPackage,
+  isTrackPrintPackageBytes,
+  type TrackPrintPackageAsset,
+} from '../../level/trackprintPackage';
+import type { TrackDefinition } from '../../level/TrackDefinition';
 import { ToolInspector } from './ToolInspector';
 import { TrackViewport, type EditorTool, type StationInspection, type TrackDisplayOptions } from './viewport/TrackViewport';
 
@@ -327,6 +336,7 @@ export function App() {
   const [exportPreview, setExportPreview] = useState<ExportPreviewStats | null>(null);
   const [bandCreationDraft, setBandCreationDraft] = useState<BandCreationDraft | null>(null);
   const [bandPickTarget, setBandPickTarget] = useState<'startStation' | 'endStation' | null>(null);
+  const projectFileInputRef = useRef<HTMLInputElement | null>(null);
   // The curb/runoff currently selected for editing in the Curbs tool. `kind`
   // disambiguates because curb and runoff ids live in separate arrays.
   const [selectedBand, setSelectedBand] = useState<{ readonly kind: BandDraftKind; readonly id: string } | null>(null);
@@ -1157,31 +1167,69 @@ export function App() {
     setSaveStatus(`Saved ${compileProjectHash(project)}`);
   }
 
-  function downloadProject() {
-    const serialized = projectJson || serializeProject(createProject(document, terrainSource, { selectedPoint, mode }));
-    const url = URL.createObjectURL(new Blob([serialized], { type: 'application/json' }));
+  async function downloadProject() {
+    const project = createProject(document, terrainSource, { selectedPoint, mode });
+    const asset = await terrainTextureAssetFromCanvas(imageryCanvas);
+    const bytes = encodeTrackPrintPackage({
+      project,
+      track: createCompiledVehicleSimTrack(formatProjectName(document.id)),
+      assets: asset ? [asset] : [],
+    });
+    setProjectJson(serializeProject(project));
+    const url = URL.createObjectURL(new Blob([arrayBufferFromBytes(bytes)], { type: TRACKPRINT_PACKAGE_MIME }));
     const link = window.document.createElement('a');
     link.href = url;
-    link.download = 'trackprint-project.json';
+    link.download = `${document.id || 'trackprint'}${TRACKPRINT_PACKAGE_EXTENSION}`;
     link.click();
     URL.revokeObjectURL(url);
+    setSaveStatus(`Downloaded ${compileProjectHash(project)}${asset ? ' with texture' : ''}`);
   }
 
-  function loadProjectJson() {
-    const loaded = loadProject(projectJson);
+  function openProject() {
+    projectFileInputRef.current?.click();
+  }
+
+  function loadSerializedProject(serialized: string) {
+    const loaded = loadProject(serialized);
     if (!loaded.project) {
       setLoadError(loaded.issues.map((issue) => issue.message).join(' '));
       return;
     }
-    commitHistory();
-    setDocument(loaded.project.track);
-    setAuthoringPoints(anchorPointsFromDocument(loaded.project.track));
-    setTerrainSource(loaded.project.terrain);
-    setImageryCanvas(null);
-    setSelectedPoint(loaded.project.editorState.selectedPoint);
-    setMode(loaded.project.editorState.mode);
+    applyLoadedProject(loaded.project, null);
     setLoadError(loaded.issues.map((issue) => issue.message).join(' '));
     setSaveStatus(`Loaded ${compileProjectHash(loaded.project)}`);
+  }
+
+  async function loadProjectFile(file: File) {
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (isTrackPrintPackageBytes(bytes) || file.name.toLowerCase().endsWith(TRACKPRINT_PACKAGE_EXTENSION)) {
+        const decoded = decodeTrackPrintPackage(bytes);
+        const textureAsset = decoded.assets.find((asset) => asset.role === 'terrain-texture') ?? null;
+        const canvas = textureAsset ? await canvasFromPackageAsset(textureAsset) : null;
+        applyLoadedProject(decoded.project, canvas);
+        setProjectJson(serializeProject(decoded.project));
+        setLoadError('');
+        setSaveStatus(`Loaded ${decoded.project.metadata.name} package`);
+        return;
+      }
+      loadSerializedProject(new TextDecoder().decode(bytes));
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Project file could not be loaded.');
+    }
+  }
+
+  function applyLoadedProject(
+    project: ReturnType<typeof createProject>,
+    textureCanvas: HTMLCanvasElement | null,
+  ) {
+    commitHistory();
+    setDocument(project.track);
+    setAuthoringPoints(anchorPointsFromDocument(project.track));
+    setTerrainSource(project.terrain);
+    setImageryCanvas(textureCanvas);
+    setSelectedPoint(project.editorState.selectedPoint);
+    setMode(project.editorState.mode);
   }
 
   function loadExample(kind: 'flat' | 'elevation' | 'curbs' | 'terrain') {
@@ -1204,13 +1252,7 @@ export function App() {
   }
 
   function exportVehicleSimTrack() {
-    const exported = createVehicleSimTrackFromTrackPrint(document, {
-      displayName: formatProjectName(document.id),
-    });
-    exported.features.trackPrintTerrain = serializeTrackPrintTerrainMesh(terrainMesh);
-    exported.features.trackPrintSkirt = serializeTrackPrintTerrainMesh(skirtMesh);
-    exported.features.trackPrintSurface = serializeTrackPrintSurface(surface);
-    exported.world.meshSurface = serializeTrackPrintCollisionSurface(surface, terrainMesh, skirtMesh);
+    const exported = createCompiledVehicleSimTrack(formatProjectName(document.id));
     const serialized = JSON.stringify(exported, null, 2);
     const url = URL.createObjectURL(new Blob([serialized], { type: 'application/json' }));
     const link = window.document.createElement('a');
@@ -1222,13 +1264,7 @@ export function App() {
   }
 
   async function raceEditedTrack() {
-    const exported = createVehicleSimTrackFromTrackPrint(document, {
-      displayName: `TrackPrint - ${formatProjectName(document.id)}`,
-    });
-    exported.features.trackPrintTerrain = serializeTrackPrintTerrainMesh(terrainMesh);
-    exported.features.trackPrintSkirt = serializeTrackPrintTerrainMesh(skirtMesh);
-    exported.features.trackPrintSurface = serializeTrackPrintSurface(surface);
-    exported.world.meshSurface = serializeTrackPrintCollisionSurface(surface, terrainMesh, skirtMesh);
+    const exported = createCompiledVehicleSimTrack(`TrackPrint - ${formatProjectName(document.id)}`);
     try {
       await saveTrackPrintPreviewTrackForBrowser(exported);
     } catch (error) {
@@ -1240,6 +1276,26 @@ export function App() {
     if (new URLSearchParams(window.location.search).has('e2e')) target.searchParams.set('e2e', '1');
     if (new URLSearchParams(window.location.search).has('debug')) target.searchParams.set('debug', '1');
     window.location.assign(target.toString());
+  }
+
+  function createCompiledVehicleSimTrack(displayName: string): TrackDefinition {
+    const exported = createVehicleSimTrackFromTrackPrint(document, {
+      displayName,
+    });
+    exported.features.trackPrintTerrain = serializeTrackPrintTerrainMesh(terrainMesh);
+    exported.features.trackPrintSkirt = serializeTrackPrintTerrainMesh(skirtMesh);
+    exported.features.trackPrintSurface = serializeTrackPrintSurface(surface);
+    exported.world.meshSurface = serializeTrackPrintCollisionSurface(surface, terrainMesh, skirtMesh);
+    const dataUrl = terrainTextureDataUrlFromCanvas(imageryCanvas);
+    if (dataUrl) {
+      exported.features.trackPrintTerrainTexture = {
+        mimeType: 'image/png',
+        dataUrl,
+        width: imageryCanvas?.width,
+        height: imageryCanvas?.height,
+      };
+    }
+    return exported;
   }
 
   function recordTelemetrySample() {
@@ -1282,7 +1338,7 @@ export function App() {
   });
 
   return (
-    <main className="app-shell">
+    <main className="app-shell trackprint-editor">
       <header className="topbar">
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true">TP</div>
@@ -1302,7 +1358,7 @@ export function App() {
             <button aria-label="New project" title="New" onClick={createNewTrack}>
               <FolderOpen size={16} />
             </button>
-            <button aria-label="Load project" title="Open" onClick={loadProjectJson}>
+            <button aria-label="Load project" title="Open .tp or JSON" onClick={openProject}>
               <Upload size={16} />
             </button>
             <button aria-label="Save project" title="Save" onClick={saveProject}>
@@ -1388,6 +1444,17 @@ export function App() {
             <HelpCircle size={16} />
           </button>
         </div>
+        <input
+          ref={projectFileInputRef}
+          type="file"
+          accept=".tp,.json,application/json,application/x-trackprint-package"
+          hidden
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0] ?? null;
+            event.currentTarget.value = '';
+            if (file) void loadProjectFile(file);
+          }}
+        />
       </header>
 
       <section className="workspace">
@@ -2702,6 +2769,66 @@ function pointAtStationOffset(
     x: sample.position.x + sample.normal.x * lateralOffset,
     y: sample.position.y + sample.normal.y * lateralOffset,
   };
+}
+
+function terrainTextureDataUrlFromCanvas(canvas: HTMLCanvasElement | null): string | null {
+  if (!canvas) return null;
+  try {
+    return canvas.toDataURL('image/png');
+  } catch {
+    return null;
+  }
+}
+
+async function terrainTextureAssetFromCanvas(canvas: HTMLCanvasElement | null): Promise<TrackPrintPackageAsset | null> {
+  if (!canvas) return null;
+  const blob = await new Promise<Blob | null>((resolve) => {
+    try {
+      canvas.toBlob(resolve, 'image/png');
+    } catch {
+      resolve(null);
+    }
+  });
+  if (!blob) return null;
+  return {
+    id: 'terrain-texture',
+    role: 'terrain-texture',
+    mimeType: 'image/png',
+    name: 'terrain-texture.png',
+    bytes: new Uint8Array(await blob.arrayBuffer()),
+    width: canvas.width,
+    height: canvas.height,
+  };
+}
+
+async function canvasFromPackageAsset(asset: TrackPrintPackageAsset): Promise<HTMLCanvasElement | null> {
+  if (!asset.mimeType.startsWith('image/')) return null;
+  const url = URL.createObjectURL(new Blob([arrayBufferFromBytes(asset.bytes)], { type: asset.mimeType }));
+  try {
+    const image = await loadImage(url);
+    const canvas = window.document.createElement('canvas');
+    canvas.width = image.naturalWidth || asset.width || 1;
+    canvas.height = image.naturalHeight || asset.height || 1;
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Terrain texture image could not be decoded.'));
+    image.src = url;
+  });
+}
+
+function arrayBufferFromBytes(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
 function anchorPointsFromDocument(document: TrackDocument): ControlPoint[] {

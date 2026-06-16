@@ -111,7 +111,12 @@ export class LevelBuilder {
   private createTrackPrintTerrain(): void {
     const terrain = this.features.trackPrintTerrain;
     if (!terrain) return;
-    const asset = createTrackPrintTerrainVisual(terrain, this.features.trackPrintSkirt);
+    const asset = createTrackPrintTerrainVisual(
+      terrain,
+      this.features.trackPrintSkirt,
+      undefined,
+      this.features.trackPrintTerrainTexture,
+    );
     this.scene.add(asset.object);
     this.disposables.push(...asset.disposables);
   }

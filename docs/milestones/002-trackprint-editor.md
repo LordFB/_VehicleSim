@@ -10,6 +10,8 @@ Integrate the TrackPrint circuit editor into Vehicle Sim as a dedicated in-app e
 - Expose a `/track-editor` route from the existing Vite app.
 - Add an adapter that compiles TrackPrint documents into Vehicle Sim `TrackDefinition`/`WorldSpec` data.
 - Add an editor-to-simulator handoff for the current edited track.
+- Add a `.tp` binary package format that carries the source project, compiled sim track, terrain meshes/collision, and imported real-world terrain texture bytes.
+- Let the running simulator accept dropped `.tp` packages and load them through the TrackPrint preview path.
 - Verify the default simulator route remains unchanged.
 
 ## Acceptance Criteria
@@ -18,7 +20,9 @@ Integrate the TrackPrint circuit editor into Vehicle Sim as a dedicated in-app e
 - [x] `/` still boots the Vehicle Sim driving runtime. Covered by `tests/e2e/app.spec.ts`.
 - [x] A TrackPrint document can be converted into Vehicle Sim terrain-track samples, checkpoints, bounds, spawn, and surface data. Covered by `tests/unit/trackprintVehicleSimExport.test.ts`.
 - [x] The editor can launch the simulator on the currently edited TrackPrint track through `?track=trackprint`. Covered by `tests/unit/trackDefinition.test.ts`; browser handoff covered by `tests/e2e/app.spec.ts`.
-- [x] Build and focused TrackPrint tests pass. Verified with `npm run build` and `npm test -- tests/unit/trackprintVehicleSimExport.test.ts tests/unit/trackDefinition.test.ts`.
+- [x] TrackPrint projects can be saved as reloadable `.tp` binary packages with source project data, compiled Vehicle Sim track data, terrain mesh/collision payloads, and imported terrain texture bytes. Covered by `tests/unit/trackprintPackage.test.ts`.
+- [x] Decoded `.tp` packages can feed the existing TrackPrint preview loader used by the simulator. Covered by `tests/unit/trackprintPackage.test.ts`.
+- [x] Build and focused TrackPrint tests pass. Verified with `npm run build` and `npm test -- tests/unit/trackprintPackage.test.ts tests/unit/trackprintVehicleSimExport.test.ts tests/unit/trackDefinition.test.ts`.
 
 ## Exit Condition
 

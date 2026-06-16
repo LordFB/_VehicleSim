@@ -24,6 +24,7 @@ export type TrackFeatures = {
   trackPrintTerrain?: SerializableTrackPrintTerrainMesh;
   trackPrintSkirt?: SerializableTrackPrintTerrainMesh;
   trackPrintSurface?: SerializableTrackPrintSurface;
+  trackPrintTerrainTexture?: SerializableTrackPrintTerrainTexture;
 };
 
 export type SerializableTrackPrintTerrainMesh = {
@@ -41,6 +42,13 @@ export type SerializableTrackPrintSurfaceBand = SerializableTrackPrintTerrainMes
 export type SerializableTrackPrintSurface = {
   asphalt: SerializableTrackPrintTerrainMesh;
   bands: SerializableTrackPrintSurfaceBand[];
+};
+
+export type SerializableTrackPrintTerrainTexture = {
+  mimeType: string;
+  dataUrl: string;
+  width?: number;
+  height?: number;
 };
 
 export type TrackDefinition = {

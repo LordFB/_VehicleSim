@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type {
   SerializableTrackPrintSurface,
   SerializableTrackPrintSurfaceBand,
+  SerializableTrackPrintTerrainTexture,
   SerializableTrackPrintTerrainMesh,
 } from './TrackDefinition';
 import type { TerrainTrackSample } from '../sim/types';
@@ -14,19 +15,23 @@ export function createTrackPrintTerrainVisual(
   terrain: SerializableTrackPrintTerrainMesh,
   skirt?: SerializableTrackPrintTerrainMesh,
   clip?: { samples: TerrainTrackSample[]; halfWidth: number },
-): { object: THREE.Object3D; disposables: Array<THREE.BufferGeometry | THREE.Material> } {
+  textureSource?: SerializableTrackPrintTerrainTexture,
+): { object: THREE.Object3D; disposables: Array<THREE.BufferGeometry | THREE.Material | THREE.Texture> } {
   const group = new THREE.Group();
   group.name = 'trackprint-terrain-root';
-  const disposables: Array<THREE.BufferGeometry | THREE.Material> = [];
+  const disposables: Array<THREE.BufferGeometry | THREE.Material | THREE.Texture> = [];
+  const texture = textureSource?.dataUrl ? createTerrainTexture(textureSource.dataUrl) : null;
+  const textureBounds = texture ? boundsForMesh(terrain.indices.length > 0 ? terrain : skirt) : null;
+  if (texture) disposables.push(texture);
   if (terrain.indices.length > 0) {
-    const terrainMesh = createSchematicMesh(terrain, 2, 2, clip);
+    const terrainMesh = createSchematicMesh(terrain, 2, 2, clip, texture, textureBounds);
     terrainMesh.name = 'trackprint-terrain';
     terrainMesh.renderOrder = -3;
     group.add(terrainMesh);
     disposables.push(terrainMesh.geometry, terrainMesh.material as THREE.Material);
   }
   if (skirt && skirt.indices.length > 0) {
-    const skirtMesh = createSchematicMesh(skirt, -0.5, -0.5);
+    const skirtMesh = createSchematicMesh(skirt, -0.5, -0.5, undefined, texture, textureBounds);
     skirtMesh.name = 'trackprint-terrain-skirt';
     skirtMesh.renderOrder = -2;
     group.add(skirtMesh);
@@ -120,6 +125,8 @@ function createSchematicMesh(
   polygonOffsetFactor: number,
   polygonOffsetUnits: number,
   clip?: { samples: TerrainTrackSample[]; halfWidth: number },
+  texture?: THREE.Texture | null,
+  textureBounds?: TerrainTextureBounds | null,
 ): THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial> {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(mesh.positions, 3));
@@ -127,11 +134,49 @@ function createSchematicMesh(
   if (mesh.uvs) geometry.setAttribute('uv', new THREE.Float32BufferAttribute(mesh.uvs, 2));
   geometry.setIndex(new THREE.BufferAttribute(Uint32Array.from(clip ? clippedIndices(mesh, clip) : mesh.indices), 1));
   if (!mesh.normals) geometry.computeVertexNormals();
-  const material = createTerrainShaderMaterial();
+  const material = texture && textureBounds
+    ? createTerrainTextureShaderMaterial(texture, textureBounds)
+    : createTerrainShaderMaterial();
   material.polygonOffset = true;
   material.polygonOffsetFactor = polygonOffsetFactor;
   material.polygonOffsetUnits = polygonOffsetUnits;
   return new THREE.Mesh(geometry, material);
+}
+
+type TerrainTextureBounds = {
+  minX: number;
+  minZ: number;
+  width: number;
+  depth: number;
+};
+
+function createTerrainTexture(dataUrl: string): THREE.Texture {
+  const texture = new THREE.TextureLoader().load(dataUrl);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.flipY = false;
+  texture.anisotropy = 8;
+  return texture;
+}
+
+function boundsForMesh(mesh: SerializableTrackPrintTerrainMesh | undefined): TerrainTextureBounds | null {
+  if (!mesh || mesh.positions.length < 3) return null;
+  let minX = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxZ = -Infinity;
+  for (let index = 0; index < mesh.positions.length; index += 3) {
+    minX = Math.min(minX, mesh.positions[index]);
+    maxX = Math.max(maxX, mesh.positions[index]);
+    minZ = Math.min(minZ, mesh.positions[index + 2]);
+    maxZ = Math.max(maxZ, mesh.positions[index + 2]);
+  }
+  if (![minX, minZ, maxX, maxZ].every(Number.isFinite)) return null;
+  return {
+    minX,
+    minZ,
+    width: Math.max(maxX - minX, 1e-6),
+    depth: Math.max(maxZ - minZ, 1e-6),
+  };
 }
 
 function clippedIndices(
@@ -274,6 +319,45 @@ function createTerrainShaderMaterial(): THREE.ShaderMaterial {
         vec3 withMinor = mix(lit, uGridColor, minorMask * uMinorOpacity);
         vec3 finalColor = mix(withMinor, uGridColor, majorMask * uMajorOpacity);
         gl_FragColor = vec4(finalColor, 1.0);
+      }
+    `,
+    side: THREE.DoubleSide,
+    depthWrite: true,
+  });
+}
+
+function createTerrainTextureShaderMaterial(texture: THREE.Texture, bounds: TerrainTextureBounds): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uMap: { value: texture },
+      uMin: { value: new THREE.Vector2(bounds.minX, bounds.minZ) },
+      uSize: { value: new THREE.Vector2(bounds.width, bounds.depth) },
+      uLightDir: { value: TERRAIN_LIGHT_DIR.clone() },
+    },
+    vertexShader: `
+      varying vec3 vWorldPosition;
+      varying vec3 vWorldNormal;
+      void main() {
+        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPosition.xyz;
+        vWorldNormal = normalize(mat3(modelMatrix) * normal);
+        gl_Position = projectionMatrix * viewMatrix * worldPosition;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vWorldPosition;
+      varying vec3 vWorldNormal;
+      uniform sampler2D uMap;
+      uniform vec2 uMin;
+      uniform vec2 uSize;
+      uniform vec3 uLightDir;
+
+      void main() {
+        vec2 uv = clamp((vWorldPosition.xz - uMin) / uSize, 0.0, 1.0);
+        vec3 albedo = texture2D(uMap, uv).rgb;
+        float ndotl = max(dot(normalize(vWorldNormal), normalize(uLightDir)), 0.0);
+        float light = mix(0.55, 1.12, ndotl);
+        gl_FragColor = vec4(albedo * light, 1.0);
       }
     `,
     side: THREE.DoubleSide,
