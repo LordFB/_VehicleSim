@@ -28,6 +28,9 @@ export type TireForceOutput = {
   slipRatio: number;
   slipAngleRad: number;
   muScale: number;
+  /** Effective ∂fx/∂(slip ratio) after load/combined limiting — used to integrate the
+   *  wheel spin semi-implicitly (the longitudinal slope seen by the wheel ODE). */
+  dFxdSlip: number;
 };
 
 export function createTireState(): TireState {
@@ -39,7 +42,7 @@ export function calculateTireForces(input: TireForceInput): TireForceOutput {
   if (normalLoad <= 1 || !Number.isFinite(normalLoad)) {
     state.relaxedSlipRatio = 0;
     state.relaxedSlipAngle = 0;
-    return { fx: 0, fy: 0, mz: 0, slipRatio: 0, slipAngleRad: 0, muScale: thermalWearMuScale(tire, state) };
+    return { fx: 0, fy: 0, mz: 0, slipRatio: 0, slipAngleRad: 0, muScale: thermalWearMuScale(tire, state), dFxdSlip: tire.longitudinalStiffness };
   }
 
   const relaxationSpeed = Math.max(Math.abs(input.speedMps), 2);
@@ -52,16 +55,41 @@ export function calculateTireForces(input: TireForceInput): TireForceOutput {
   const muScale = thermalWearMuScale(tire, state);
   const muLong = surface.muLongitudinal * loadScale * muScale;
   const muLat = surface.muLateral * loadScale * muScale;
-
-  let fx = tire.longitudinalStiffness * state.relaxedSlipRatio;
-  let fy = -tire.corneringStiffness * state.relaxedSlipAngle + tire.camberStiffness * input.camberRad;
   const longCapacity = Math.max(1, muLong * normalLoad);
   const latCapacity = Math.max(1, muLat * normalLoad);
+
+  // Saturating brush model. The raw linear forces (stiffness × slip) are only physical
+  // near zero slip; past the friction peak the contact patch slides and the force must
+  // plateau at μ·Fz rather than grow without bound. We form a single normalised combined
+  // slip σ, pass it through a saturation curve f(σ) that rises ~linearly then rolls off to
+  // 1.0, and distribute the resulting capacity back onto each axis by its share of σ. This
+  // keeps the linear regime (small-slip tests) intact while making high-slip behaviour
+  // bounded and giving a marginal-slope that collapses past the peak — the wheel-spin ODE
+  // relies on that collapse to be able to break the tyres loose under big throttle.
+  const sigmaX = (tire.longitudinalStiffness * state.relaxedSlipRatio) / longCapacity;
+  const camberForce = tire.camberStiffness * input.camberRad;
+  const sigmaY = (-tire.corneringStiffness * state.relaxedSlipAngle + camberForce) / latCapacity;
+  const sigma = Math.hypot(sigmaX, sigmaY);
+
+  // f(σ): unit-slope at the origin, saturating to 1. (σ - σ²/3 + σ³/27) is the classic
+  // brush parabola up to the full-slide point σ=3; beyond that it holds at the peak.
+  const fSat = sigma >= 3 ? 1 : sigma * (1 - sigma / 3 + (sigma * sigma) / 27);
+  // Marginal slope df/dσ of that curve (→1 at σ=0, →0 at σ=3), used for ODE damping.
+  const dfdSigma = sigma >= 3 ? 0 : 1 - (2 * sigma) / 3 + (sigma * sigma) / 9;
+  const scale = sigma > 1e-6 ? fSat / sigma : 1;
+
+  let fx = sigmaX * scale * longCapacity;
+  let fy = sigmaY * scale * latCapacity;
+  // Numerical guard: never exceed the friction ellipse (rounding on the curve edges).
   const combined = Math.hypot(fx / longCapacity, fy / latCapacity);
   if (combined > 1) {
     fx /= combined;
     fy /= combined;
   }
+
+  // ∂fx/∂(slip ratio): chain rule through σ. Near zero slip this is the full longitudinal
+  // stiffness; once the tyre saturates dfdSigma → 0 so the marginal slope collapses.
+  const dFxdSlip = tire.longitudinalStiffness * (sigma > 1e-6 ? dfdSigma : 1);
   const mz = -fy * tire.pneumaticTrail;
   return {
     fx,
@@ -70,6 +98,7 @@ export function calculateTireForces(input: TireForceInput): TireForceOutput {
     slipRatio: state.relaxedSlipRatio,
     slipAngleRad: state.relaxedSlipAngle,
     muScale,
+    dFxdSlip: Math.max(0, dFxdSlip),
   };
 }
 

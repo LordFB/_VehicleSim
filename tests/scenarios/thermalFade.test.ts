@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import defaultVehicleJson from '../../src/sim/data/defaultVehicle.json';
 import testWorldJson from '../../src/sim/data/testWorld.json';
 import { PhysicsRuntime } from '../../src/sim/runtime/PhysicsRuntime';
+import { DEFAULT_PHYSICS_SETUP } from '../../src/sim/types';
 import type { InputFrame, VehicleSpec, WorldSpec } from '../../src/sim/types';
 
 describe('thermal vehicle systems', () => {
@@ -15,6 +16,9 @@ describe('thermal vehicle systems', () => {
 
   it('heats brakes during repeated braking events', () => {
     const runtime = createRuntime();
+    // Disable ABS so this exercises the raw brake-thermal path (ABS would modulate brake
+    // torque, which is its own behaviour — covered separately in the aids tests).
+    runtime.applySetup({ ...DEFAULT_PHYSICS_SETUP, abs: 0 });
     drive(runtime, 4, () => ({ throttle: 1, brake: 0, handbrake: 0, steering: 0 }));
     drive(runtime, 3, (step) => ({ throttle: step % 100 < 45 ? 0 : 1, brake: step % 100 < 45 ? 1 : 0, handbrake: 0, steering: 0 }));
     const telemetry = runtime.getSnapshot()!.telemetry;

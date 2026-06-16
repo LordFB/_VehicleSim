@@ -309,6 +309,11 @@ export type PhysicsSetup = {
   dragScale: number; // ×dragArea
   gripScale: number; // ×tire mu (both axes)
   finalDriveScale: number; // ×final drive ratio
+  // Driver aids. 0 disables the aid; higher = stronger intervention. Defaults are ON at a
+  // moderate level so the car is friendly out of the box; a hardcore driver dials them to 0.
+  tractionControl: number; // 0..1 — clamps drive torque to hold the driven-wheel slip target
+  abs: number; // 0..1 — releases brake torque to hold the braked-wheel slip target
+  stabilityControl: number; // 0..1 — counters excess yaw (spin) with asymmetric brake/throttle trim
 };
 
 export const DEFAULT_PHYSICS_SETUP: PhysicsSetup = {
@@ -318,6 +323,9 @@ export const DEFAULT_PHYSICS_SETUP: PhysicsSetup = {
   dragScale: 1,
   gripScale: 1,
   finalDriveScale: 1,
+  tractionControl: 0.7,
+  abs: 0.8,
+  stabilityControl: 0.6,
 };
 
 export type WorkerRequest =

@@ -19,6 +19,18 @@ type Field = {
   format?: (v: number) => string;
 };
 
+// Driver-aid sliders live on the physics overlay. 0% = the aid is fully off (hardcore);
+// higher = stronger intervention. They default ON (see DEFAULT_PHYSICS_SETUP).
+const AID_FIELDS: Field[] = [
+  { group: 'physics', key: 'tractionControl', label: 'Traction control', min: 0, max: 1, step: 0.05, format: aidPct },
+  { group: 'physics', key: 'abs', label: 'ABS', min: 0, max: 1, step: 0.05, format: aidPct },
+  { group: 'physics', key: 'stabilityControl', label: 'Stability control', min: 0, max: 1, step: 0.05, format: aidPct },
+];
+
+function aidPct(v: number): string {
+  return v <= 0 ? 'Off' : `${Math.round(v * 100)}%`;
+}
+
 /**
  * The car setup modal: a Forza/iRacing-style garage panel with three tabs — Tuning,
  * Transmission, Assists. Sliders live-apply to the running car on every change (via the
@@ -134,7 +146,21 @@ export class SetupModal {
     this.body.replaceChildren();
     if (this.tab === 'tuning') this.renderFields(TUNING_FIELDS);
     else if (this.tab === 'transmission') this.renderTransmission();
-    else this.renderFields(ASSIST_FIELDS);
+    else this.renderAssists();
+  }
+
+  private renderAssists(): void {
+    this.renderHeading('Electronic aids');
+    this.renderFields(AID_FIELDS);
+    this.renderHeading('Input feel');
+    this.renderFields(ASSIST_FIELDS);
+  }
+
+  private renderHeading(text: string): void {
+    const h = document.createElement('div');
+    h.className = 'setup-subhead';
+    h.textContent = text;
+    this.body.appendChild(h);
   }
 
   private renderFields(fields: Field[]): void {

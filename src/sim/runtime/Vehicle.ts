@@ -57,6 +57,20 @@ const STICK_BLEND = 0.9;
 const STEER_SPEED_FULLSCALE = 55; // m/s (~200 km/h)
 const STEER_SPEED_FLOOR = 0.45;
 
+// Driver-aid setpoints. Traction control targets a small positive drive slip (the peak of
+// the longitudinal grip curve); ABS targets a small negative slip under braking. Stability
+// control trims yaw toward the rate the steering+speed imply. These are the slip the aids
+// hold when at full strength; the setup value scales how hard they intervene.
+const TC_SLIP_TARGET = 0.14; // slip ratio TC tries not to exceed under power
+const ABS_SLIP_TARGET = 0.16; // |slip ratio| ABS tries not to exceed under braking
+const ESC_YAW_DEADBAND = 0.18; // rad/s of excess yaw tolerated before ESC trims
+
+// Rollover-recovery safety net. Past this body-roll angle the car is effectively on two
+// wheels / its side; a restoring torque eases it back upright instead of letting it stick
+// inverted. Below the threshold this is fully inert, so normal cornering is untouched.
+const ROLL_RECOVERY_START_RAD = 0.7; // ~40° of tilt
+const ROLL_RECOVERY_FULL_RAD = 1.4; // ~80° — full restoring authority by here
+
 export class Vehicle {
   readonly id = 'player';
   readonly spec: VehicleSpec;
@@ -71,6 +85,11 @@ export class Vehicle {
   private readonly comOffset: Vec3;
   private readonly wheels = new Map<WheelId, WheelRuntimeState>();
   private readonly drivetrainState: DrivetrainState;
+  // Front-to-rear axle distance, used by the stability-control yaw reference.
+  private readonly estimatedWheelbase: number;
+  // Running average of the contact friction the tyres last saw (for ESC's grip-limited
+  // yaw reference). Seeded to a typical dry-asphalt value.
+  private lastGripMu = 1.1;
   private steeringAngle = 0;
   private lastInput: InputFrame;
   private sequence = 0;
@@ -95,6 +114,9 @@ export class Vehicle {
     for (const wheelSpec of spec.wheels) {
       this.wheels.set(wheelSpec.id, this.createWheelState(wheelSpec));
     }
+    const frontZ = spec.wheels.find((w) => w.id === 'frontLeft')?.localPosition[2] ?? 1.5;
+    const rearZ = spec.wheels.find((w) => w.id === 'rearLeft')?.localPosition[2] ?? -1.5;
+    this.estimatedWheelbase = Math.max(0.5, Math.abs(frontZ - rearZ));
     this.drivetrainState = createDrivetrainState(spec.engine);
     this.lastInput = createNeutralInput();
     this.telemetry = this.createTelemetry(0, 0);
@@ -170,6 +192,14 @@ export class Vehicle {
     const drivetrainSpec = this.setup.finalDriveScale === 1
       ? this.spec.drivetrain
       : { ...this.spec.drivetrain, finalDrive: this.spec.drivetrain.finalDrive * this.setup.finalDriveScale };
+    // Road-speed-equivalent omega per driven wheel (ground speed / radius), so the gearbox
+    // shifts on how fast the car is actually going rather than on a spinning tyre.
+    const chassisForwardFlat = this.chassis.worldVector(VEC3_FORWARD).projectOnPlane(VEC3_UP).normalize();
+    const rollOmega = driven.map((wheel) => {
+      const hp = this.chassisLocalToWorld(Vec3.fromTuple(wheel.spec.localPosition));
+      const vLong = this.chassis.velocityAtPoint(hp).dot(chassisForwardFlat);
+      return vLong / wheel.spec.tire.radius;
+    });
     const drivetrain = solveDrivetrain(
       this.spec.engine,
       drivetrainSpec,
@@ -178,6 +208,7 @@ export class Vehicle {
       driven.map((wheel) => wheel.spec.id),
       dt,
       this.drivetrainState,
+      rollOmega,
     );
     // A gear change is a discrete event: consume it so it fires exactly once per
     // input frame, not once per physics substep (3x per tick) — otherwise a single
@@ -187,6 +218,7 @@ export class Vehicle {
     }
 
     this.applyTires(samples, drivetrain.driveTorqueByWheel, dt);
+    this.applyStabilityControl(dt);
     this.applyAero();
     this.chassis.integrate(dt);
     this.solvePrimitiveBarrierFloor(surfaceSystem);
@@ -460,7 +492,19 @@ export class Vehicle {
       // micro-velocity (settling, idle engine-braking) runs away. Below a small speed,
       // and when the driver isn't commanding drive, add a critically-damped force that
       // arrests the residual contact velocity, clamped to the available grip.
-      const driveTorque = driveTorqueByWheel[wheel.spec.id] ?? 0;
+      let driveTorque = driveTorqueByWheel[wheel.spec.id] ?? 0;
+      // Traction control: when a driven wheel's slip ratio exceeds the target, cut drive
+      // torque proportional to the overshoot (and the aid strength). This is what keeps a
+      // full-throttle launch from lighting the tyres into a runaway spin/spin-out, while a
+      // hardcore driver who sets the aid to 0 still gets raw, modulate-it-yourself power.
+      if (this.setup.tractionControl > 0 && driveTorque !== 0) {
+        const driveSlip = slipRatio * Math.sign(driveTorque || 1);
+        const over = driveSlip - TC_SLIP_TARGET;
+        if (over > 0) {
+          const cut = clamp(over / 0.5, 0, 1) * this.setup.tractionControl;
+          driveTorque *= 1 - cut;
+        }
+      }
       const speedAtPatch = Math.hypot(vLong, vLat);
       // "Commanding drive" = the driver wants to move (throttle, or a real drive torque
       // on a driven wheel). When commanding drive we must NOT hold longitudinally or the
@@ -487,6 +531,8 @@ export class Vehicle {
 
       const tireForce = wheelForward.scaled(forces.fx).add(wheelRight.scaled(forces.fy));
       this.chassis.applyForce(tireForce, sample.contactPoint);
+      // Track the lateral grip the tyres are seeing for the ESC yaw-rate reference.
+      this.lastGripMu = this.lastGripMu * 0.9 + sample.contact.muLateral * forces.muScale * 0.1;
 
       // Setup overlay: scale total brake force and split it by the configured bias
       // (front share). Defaults reproduce the stock per-wheel bias exactly.
@@ -496,16 +542,46 @@ export class Vehicle {
         this.lastInput.brake * this.spec.brakes.maxTorque * this.setup.brakeForceScale * biasShare +
         (isRear ? this.lastInput.handbrake * this.spec.brakes.handbrakeTorque : 0);
       const brakeFade = calculateBrakeFade(wheel.brakeTempC, this.spec.brakes.fadeStartC, this.spec.brakes.fadeEndC);
-      const brakeTorque = requestedBrakeTorque * brakeFade;
+      let brakeTorque = requestedBrakeTorque * brakeFade;
+      // ABS: a locked wheel slides (slip ratio toward -1) and loses both braking and
+      // steering grip. When the braking slip exceeds the target, bleed brake torque
+      // proportional to the overshoot so the wheel keeps rolling near the friction peak.
+      if (this.setup.abs > 0 && brakeTorque > 0 && Math.abs(vLong) > 1.5) {
+        const brakeSlip = -slipRatio * Math.sign(vLong || 1); // positive when locking up
+        const over = brakeSlip - ABS_SLIP_TARGET;
+        if (over > 0) {
+          const release = clamp(over / 0.4, 0, 1) * this.setup.abs;
+          brakeTorque *= 1 - release;
+        }
+      }
       const brakeDirection = Math.sign(wheel.angularVelocity) || Math.sign(vLong) || 1;
       const rollingTorque = sample.contact.muLongitudinal * wheel.spec.tire.rollingResistanceScale * wheel.telemetry.loadN * wheel.spec.tire.radius;
       // Engine braking and rolling resistance oppose motion; they must not push a
       // stationary wheel backwards past zero. Cap the decelerating torque so it can
       // only remove existing rotation within this step, never reverse it.
       const passiveTorque = brakeTorque * brakeDirection + rollingTorque * Math.sign(wheel.angularVelocity || vLong || 1);
-      const driveAngularAccel = (driveTorque - forces.fx * wheel.spec.tire.radius) / wheel.spec.inertia;
-      let nextOmega = wheel.angularVelocity + driveAngularAccel * dt;
-      const passiveAccel = passiveTorque / wheel.spec.inertia;
+
+      // Semi-implicit (backward-Euler) wheel spin update. The longitudinal tire force is
+      // a stiff spring on the slip ratio, hence on the wheel speed: fx ≈ k·(ωr − v)/vRef.
+      // Integrating the reaction torque −r·fx explicitly is numerically unstable for the
+      // tiny wheel inertia at this timestep (the spin rings between ±2 slip and the rear
+      // tyres run away into permanent wheelspin). Treating the reaction implicitly adds
+      // exactly the damping the explicit scheme is missing and is unconditionally stable.
+      const r = wheel.spec.tire.radius;
+      const vRef = Math.max(Math.abs(vLong), 3);
+      // ∂fx/∂ω: the brush model's longitudinal slope (post-saturation) divided by the slip
+      // reference speed and scaled by the radius — how much the contact force changes per
+      // rad/s of wheel speed.
+      const slipStiffness = forces.dFxdSlip * (r / vRef); // N per (rad/s)
+      const I = wheel.spec.inertia;
+      // ω₁ = ω₀ + dt/I·(T_drive − r·fx(ω₁)). Linearising fx about ω₀ (fx ≈ fx₀ + S·Δω,
+      // S = r·slipStiffness) and solving gives the update below: the *increment* is damped
+      // by (1 + dt·r·S/I), NOT ω₀ itself, so the wheel can still spin up with the car under
+      // power while the stiff reaction torque can no longer ring or run away.
+      const accelIncrement = (dt * (driveTorque - forces.fx * r)) / I;
+      let nextOmega = wheel.angularVelocity + accelIncrement / (1 + (dt * r * slipStiffness) / I);
+
+      const passiveAccel = passiveTorque / I;
       const passiveDelta = passiveAccel * dt;
       // Only let passive torque reduce |nextOmega| toward zero, not flip its sign.
       if (Math.abs(passiveDelta) >= Math.abs(nextOmega) && Math.sign(passiveDelta) === Math.sign(nextOmega || passiveDelta)) {
@@ -538,6 +614,40 @@ export class Vehicle {
       wheel.telemetry.brakeTempC = wheel.brakeTempC;
       wheel.telemetry.brakeFade = brakeFade;
     }
+  }
+
+  /**
+   * Electronic stability control. Compares the actual yaw rate against the rate the
+   * driver's steering and current speed can physically sustain (a bicycle-model reference
+   * capped at the friction limit) and applies a corrective yaw torque toward it. This is
+   * what arrests the open-diff power-on spin: a sudden yaw spike beyond what the steering
+   * asked for is damped before it becomes an unrecoverable spin. At strength 0 (hardcore)
+   * the car is free to step out and the driver must catch it.
+   */
+  private applyStabilityControl(dt: number): void {
+    const strength = this.setup.stabilityControl;
+    if (strength <= 0) return;
+    const forward = this.chassis.worldVector(VEC3_FORWARD).projectOnPlane(VEC3_UP).normalize();
+    const speed = this.chassis.linearVelocity.dot(forward);
+    if (Math.abs(speed) < 3) return; // no meaningful yaw reference at a crawl
+
+    // Bicycle-model reference yaw rate for the commanded steer angle, capped by the lateral
+    // grip the tyres can deliver (μ·g / v) so the reference never exceeds what's physical.
+    const wheelbase = this.estimatedWheelbase;
+    const refYaw = (speed / wheelbase) * Math.tan(this.steeringAngle);
+    const gripYaw = (this.lastGripMu * 9.81) / Math.max(Math.abs(speed), 1);
+    const targetYaw = clamp(refYaw, -gripYaw, gripYaw);
+
+    const yaw = this.chassis.angularVelocity.y;
+    const excess = yaw - targetYaw;
+    if (Math.abs(excess) <= ESC_YAW_DEADBAND) return;
+
+    const over = excess - Math.sign(excess) * ESC_YAW_DEADBAND;
+    // Restoring yaw torque ∝ excess yaw, the yaw inertia, and the aid strength. Critically
+    // damped-ish: trims a large fraction of the excess per substep without ringing.
+    const yawInertia = this.chassis.inertia.y;
+    const correction = -over * yawInertia * strength * 9;
+    this.chassis.torque.add(VEC3_UP.scaled(correction));
   }
 
   private applyAero(): void {

@@ -46,6 +46,10 @@ export function solveDrivetrain(
   drivenWheelIds: WheelId[],
   dt: number,
   state: DrivetrainState,
+  // Wheel angular velocity that corresponds to actual road speed (vLong / radius). Used
+  // for the auto-shift decision so spinning wheels don't fake a redline and slam through
+  // every gear — a real gearbox shifts on road speed, not on a lit-up tyre.
+  drivenWheelRollAngularVelocity?: number[],
 ): DrivetrainOutput {
   // Manual paddle/bumper shifts (always honoured — a deliberate shift wins). Gears run
   // REVERSE(-1) → NEUTRAL(0) → 1 … gearRatios.length. Shifting into reverse is only
@@ -56,7 +60,14 @@ export function solveDrivetrain(
     drivenWheelAngularVelocity.length > 0
       ? drivenWheelAngularVelocity.reduce((sum, omega) => sum + Math.abs(omega), 0) / drivenWheelAngularVelocity.length
       : 0;
-  const nearlyStopped = averageWheelOmega < 1.5; // rad/s at the wheel (~0.5 m/s)
+  // Road-speed-equivalent wheel omega (from ground speed, not the possibly-spinning tyre).
+  // Falls back to the real wheel omega when no roll reference is supplied.
+  const rollRef = drivenWheelRollAngularVelocity && drivenWheelRollAngularVelocity.length > 0
+    ? drivenWheelRollAngularVelocity
+    : drivenWheelAngularVelocity;
+  const averageRollOmega =
+    rollRef.length > 0 ? rollRef.reduce((sum, omega) => sum + Math.abs(omega), 0) / rollRef.length : 0;
+  const nearlyStopped = averageRollOmega < 1.5; // rad/s at the wheel (~0.5 m/s)
   if (input.shiftUp && state.gearIndex < topGear) state.gearIndex += 1;
   if (input.shiftDown) {
     if (state.gearIndex > NEUTRAL) state.gearIndex -= 1;
@@ -65,6 +76,9 @@ export function solveDrivetrain(
 
   const gearRatio = ratioFor(drivetrain, state.gearIndex);
   const coupledRpm = averageWheelOmega * Math.abs(gearRatio * drivetrain.finalDrive) * 60 / (Math.PI * 2);
+  // RPM the engine would turn at the current *road* speed (no wheelspin). The auto-shift
+  // logic uses this so a spinning rear axle can't fake redline and upshift through the box.
+  const roadCoupledRpm = averageRollOmega * Math.abs(gearRatio * drivetrain.finalDrive) * 60 / (Math.PI * 2);
   const engaged = state.gearIndex !== NEUTRAL;
   // Clutch-slip launch model: with no clutch the engine is pinned to wheel speed and
   // bogs at idle off the line (a 400 hp car crawling). Under throttle at low coupled
@@ -90,8 +104,11 @@ export function solveDrivetrain(
   if (autoShift && !input.shiftUp && !input.shiftDown) {
     if (state.gearIndex === NEUTRAL && input.throttle > 0.05) state.gearIndex = 1;
     else if (state.gearIndex >= 1) {
-      if (state.rpm > drivetrain.shiftUpRpm && state.gearIndex < topGear) state.gearIndex += 1;
-      if (state.rpm < drivetrain.shiftDownRpm && state.gearIndex > 1) state.gearIndex -= 1;
+      // Shift on the road-speed rpm (clamped to the real engine rpm so a genuine high-rev
+      // pull still upshifts). This stops a lit-up tyre from instantly slamming into top.
+      const shiftRpm = Math.min(state.rpm, Math.max(roadCoupledRpm, engine.idleRpm));
+      if (shiftRpm > drivetrain.shiftUpRpm && state.gearIndex < topGear) state.gearIndex += 1;
+      if (shiftRpm < drivetrain.shiftDownRpm && state.gearIndex > 1) state.gearIndex -= 1;
     }
   }
 
@@ -101,7 +118,13 @@ export function solveDrivetrain(
   // launches the car in reverse.
   const effectiveRatio = ratioFor(drivetrain, state.gearIndex);
   state.throttleState += (clamp(input.throttle, 0, 1) - state.throttleState) * clamp(dt * engine.throttleResponse, 0, 1);
-  const engineTorque = interpolateCurve(engine.torqueCurve, state.rpm) * state.throttleState;
+  // Rev limiter. The engine is mechanically coupled to the wheels (clutch engaged), so a
+  // spinning tyre tries to over-rev it; a real engine simply can't exceed redline and the
+  // limiter cuts fuel/spark. Fade torque to zero just past redline — this is what bounds
+  // wheelspin physically (without it, a fully lit tyre integrates its speed without limit).
+  const overRev = engaged ? (coupledRpm - engine.redlineRpm) / Math.max(1, engine.redlineRpm * 0.06) : 0;
+  const revLimiter = clamp(1 - overRev, 0, 1);
+  const engineTorque = interpolateCurve(engine.torqueCurve, state.rpm) * state.throttleState * revLimiter;
   // Engine braking scales with revs above idle, so a stationary car at idle gets ~0
   // drag torque (otherwise it would be driven backwards off the line / at rest).
   const revFactor = clamp((state.rpm - engine.idleRpm) / Math.max(1, engine.redlineRpm - engine.idleRpm), 0, 1);
