@@ -65,12 +65,6 @@ const TC_SLIP_TARGET = 0.14; // slip ratio TC tries not to exceed under power
 const ABS_SLIP_TARGET = 0.16; // |slip ratio| ABS tries not to exceed under braking
 const ESC_YAW_DEADBAND = 0.18; // rad/s of excess yaw tolerated before ESC trims
 
-// Rollover-recovery safety net. Past this body-roll angle the car is effectively on two
-// wheels / its side; a restoring torque eases it back upright instead of letting it stick
-// inverted. Below the threshold this is fully inert, so normal cornering is untouched.
-const ROLL_RECOVERY_START_RAD = 0.7; // ~40° of tilt
-const ROLL_RECOVERY_FULL_RAD = 1.4; // ~80° — full restoring authority by here
-
 export class Vehicle {
   readonly id = 'player';
   readonly spec: VehicleSpec;
@@ -218,7 +212,7 @@ export class Vehicle {
     }
 
     this.applyTires(samples, drivetrain.driveTorqueByWheel, dt);
-    this.applyStabilityControl(dt);
+    this.applyStabilityControl();
     this.applyAero();
     this.chassis.integrate(dt);
     this.solvePrimitiveBarrierFloor(surfaceSystem);
@@ -624,7 +618,7 @@ export class Vehicle {
    * asked for is damped before it becomes an unrecoverable spin. At strength 0 (hardcore)
    * the car is free to step out and the driver must catch it.
    */
-  private applyStabilityControl(dt: number): void {
+  private applyStabilityControl(): void {
     const strength = this.setup.stabilityControl;
     if (strength <= 0) return;
     const forward = this.chassis.worldVector(VEC3_FORWARD).projectOnPlane(VEC3_UP).normalize();

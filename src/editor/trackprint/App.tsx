@@ -1,4 +1,5 @@
 import {
+  BrickWall,
   Brush,
   ChevronDown,
   CircleCheck,
@@ -61,6 +62,7 @@ import {
   type TrackSide,
   type TunnelInterval,
   type Vector2,
+  type WallInterval,
 } from '@trackprint/track-core';
 import { compileTrackSurface, getSurfaceRegion, sampleTrackSurface, type CompileResult } from '@trackprint/track-compiler';
 import {
@@ -131,6 +133,7 @@ const TOOL_TO_MODE: Record<EditorTool, EditorMode> = {
   Elevation: 'track',
   Banking: 'track',
   Curbs: 'track',
+  Walls: 'track',
   Sectors: 'analysis',
   Terrain: 'terrain',
   Paint: 'terrain',
@@ -340,6 +343,8 @@ export function App() {
   // The curb/runoff currently selected for editing in the Curbs tool. `kind`
   // disambiguates because curb and runoff ids live in separate arrays.
   const [selectedBand, setSelectedBand] = useState<{ readonly kind: BandDraftKind; readonly id: string } | null>(null);
+  const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
+  const [drawingWallId, setDrawingWallId] = useState<string | null>(null);
   const isBandPicking = bandCreationDraft !== null && bandPickTarget !== null;
 
   const lookup = useMemo(() => createStationLookup(document, 128), [document]);
@@ -949,6 +954,83 @@ export function App() {
     setSelectedBand((selected) => (selected?.kind === kind && selected.id === id ? null : selected));
   }
 
+  // Begin drawing a free-form wall: create an empty wall, select it, and enter
+  // draw mode. Subsequent viewport clicks append points via appendWallPoint;
+  // the author ends it with finishWall.
+  function startWall() {
+    commitHistory();
+    const id = `wall-${(document.walls?.length ?? 0) + 1}`;
+    setDocument((current) => ({
+      ...current,
+      walls: [
+        ...(current.walls ?? []),
+        {
+          id,
+          points: [],
+          cornerMode: 'cornered',
+          cornerRadius: 6,
+          height: 1,
+          segmentLength: 2,
+          style: 'armco',
+          materialId: 'armco',
+        },
+      ],
+    }));
+    setSelectedWallId(id);
+    setDrawingWallId(id);
+  }
+
+  // Append a clicked point to the wall currently being drawn. No history commit
+  // per point — the whole draw collapses into the single startWall entry, like
+  // a spline draw — so undo removes the whole wall, not one vertex at a time.
+  function appendWallPoint(point: Vector2) {
+    const id = drawingWallId;
+    if (!id) {
+      return;
+    }
+    setDocument((current) => ({
+      ...current,
+      walls: (current.walls ?? []).map((wall) =>
+        wall.id === id ? { ...wall, points: [...wall.points, point] } : wall,
+      ),
+    }));
+  }
+
+  // Finish the in-progress wall. If it ended up with fewer than two points it
+  // can't form a wall, so drop it.
+  function finishWall() {
+    const id = drawingWallId;
+    setDrawingWallId(null);
+    if (!id) {
+      return;
+    }
+    setDocument((current) => {
+      const wall = (current.walls ?? []).find((entry) => entry.id === id);
+      if (wall && wall.points.length < 2) {
+        return { ...current, walls: (current.walls ?? []).filter((entry) => entry.id !== id) };
+      }
+      return current;
+    });
+  }
+
+  function updateWall(id: string, patch: Partial<Omit<WallInterval, 'id'>>) {
+    commitHistory();
+    setDocument((current) => ({
+      ...current,
+      walls: (current.walls ?? []).map((wall) => (wall.id === id ? { ...wall, ...patch } : wall)),
+    }));
+  }
+
+  function removeWall(id: string) {
+    commitHistory();
+    setDocument((current) => ({
+      ...current,
+      walls: (current.walls ?? []).filter((wall) => wall.id !== id),
+    }));
+    setSelectedWallId((selected) => (selected === id ? null : selected));
+    setDrawingWallId((drawing) => (drawing === id ? null : drawing));
+  }
+
   // Add a tunnel over a default window centered on the current station. Both
   // walls start aligned; the per-side stations can then be edited to skew the
   // portal mouth.
@@ -1467,6 +1549,7 @@ export function App() {
               { tool: 'Elevation', Icon: Mountain },
               { tool: 'Banking', Icon: RotateCw },
               { tool: 'Curbs', Icon: Flag },
+              { tool: 'Walls', Icon: BrickWall },
               { tool: 'Sectors', Icon: MapIcon },
               { tool: 'Terrain', Icon: Brush },
               { tool: 'Paint', Icon: Paintbrush },
@@ -1551,6 +1634,8 @@ export function App() {
           terrainCursor={terrainCursor}
           selectedBand={selectedBand}
           onAddControlPoint={addControlPointAtPosition}
+          isDrawingWall={drawingWallId !== null}
+          onAddWallPoint={appendWallPoint}
           onHoverStationChange={setHoverStation}
           onMoveControlPoint={moveControlPoint}
           onPreviewMoveControlPoint={previewMoveControlPoint}
@@ -1593,6 +1678,14 @@ export function App() {
           curbs={document.curbs ?? []}
           runoffs={document.runoffs ?? []}
           selectedBand={selectedBand}
+          walls={document.walls ?? []}
+          selectedWallId={selectedWallId}
+          isDrawingWall={drawingWallId !== null}
+          onSelectWall={setSelectedWallId}
+          onStartWall={startWall}
+          onFinishWall={finishWall}
+          onUpdateWall={updateWall}
+          onRemoveWall={removeWall}
           analysis={analysis}
           analysisOverlay={analysisOverlay}
           overlayOpacity={overlayOpacity}

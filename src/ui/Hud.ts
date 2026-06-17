@@ -98,6 +98,9 @@ export class Hud {
     ctx.arc(cx, cy, radius + 14, 0, Math.PI * 2);
     ctx.fillStyle = HUD.PANEL_BG;
     ctx.fill();
+    ctx.strokeStyle = HUD.PANEL_BORDER;
+    ctx.lineWidth = 1;
+    ctx.stroke();
 
     // Track arc.
     ctx.lineWidth = 9;
@@ -124,7 +127,7 @@ export class Hud {
 
     // Needle.
     const ang = start + sweep * rpmFrac;
-    ctx.strokeStyle = near ? HUD.REDLINE : '#ffffff';
+    ctx.strokeStyle = near ? HUD.REDLINE : HUD.TEXT;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(cx + Math.cos(ang) * radius * 0.28, cy + Math.sin(ang) * radius * 0.28);
@@ -182,6 +185,9 @@ export class Hud {
     roundRect(ctx, ox - 10, oy - 10, size + 20, size + 20, 10);
     ctx.fillStyle = HUD.PANEL_BG;
     ctx.fill();
+    ctx.strokeStyle = HUD.PANEL_BORDER;
+    ctx.lineWidth = 1;
+    ctx.stroke();
 
     const b = this.trackBounds;
     const spanX = Math.max(1, b.maxX - b.minX);
@@ -194,7 +200,7 @@ export class Hud {
     const mapY = (z: number) => oy + size / 2 - (z - (b.minZ + b.maxZ) / 2) * scale;
 
     // Track outline.
-    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.strokeStyle = HUD.ACCENT;
     ctx.lineWidth = 3;
     ctx.beginPath();
     this.trackPath.forEach(([x, z], i) => {

@@ -1,4 +1,5 @@
 import {
+  BrickWall,
   Brush,
   Flag,
   Gauge,
@@ -25,6 +26,8 @@ import type {
   RunoffInterval,
   TrackDocument,
   TrackSide,
+  WallInterval,
+  WallStyle,
 } from '@trackprint/track-core';
 
 export interface BandRef {
@@ -72,6 +75,14 @@ interface ToolInspectorProps {
   readonly bankingPeakDegrees: number;
   readonly inspectedBankingDegrees: number;
   readonly bankingFalloff: number;
+  readonly walls: readonly WallInterval[];
+  readonly selectedWallId: string | null;
+  readonly isDrawingWall: boolean;
+  readonly onSelectWall: (id: string | null) => void;
+  readonly onStartWall: () => void;
+  readonly onFinishWall: () => void;
+  readonly onUpdateWall: (id: string, patch: Partial<Omit<WallInterval, 'id'>>) => void;
+  readonly onRemoveWall: (id: string) => void;
   readonly curbDraft: CurbDraft;
   readonly curbCount: number;
   readonly runoffCount: number;
@@ -132,6 +143,7 @@ const TOOL_META: Record<EditorTool, { readonly Icon: LucideIcon; readonly hint: 
   Elevation: { Icon: Mountain, hint: 'Raise or lower the start-of-track elevation key.' },
   Banking: { Icon: RotateCw, hint: 'Click a station, then set banking — the change falls off over the radius around it.' },
   Curbs: { Icon: Flag, hint: 'Configure the curb draft, then drop it on the active side.' },
+  Walls: { Icon: BrickWall, hint: 'Click two points on the track to span a wall, then tune its height, standoff and style.' },
   Sectors: { Icon: MapIcon, hint: 'Pick an analysis overlay to inspect the racing line.' },
   Terrain: { Icon: Brush, hint: 'Sculpt terrain heights with the brush.' },
   Paint: { Icon: Paintbrush, hint: 'Paint surface materials onto free terrain.' },
@@ -171,6 +183,8 @@ function ToolFields(props: ToolInspectorProps) {
       return <BankingFields {...props} />;
     case 'Curbs':
       return <CurbsFields {...props} />;
+    case 'Walls':
+      return <WallsFields {...props} />;
     case 'Sectors':
       return <SectorsFields {...props} />;
     case 'Terrain':
@@ -540,6 +554,96 @@ function CurbsFields(props: ToolInspectorProps) {
       <strong className="band-editor-title">New band</strong>
       <button type="button" onClick={() => props.onBeginBandCreation('curb')}>Create curb</button>
       <button type="button" onClick={() => props.onBeginBandCreation('runoff')}>Create runoff</button>
+    </>
+  );
+}
+
+function WallsFields(props: ToolInspectorProps) {
+  const { walls, selectedWallId, isDrawingWall } = props;
+  const selectedWall = selectedWallId ? walls.find((wall) => wall.id === selectedWallId) ?? null : null;
+
+  return (
+    <>
+      {isDrawingWall ? (
+        <div className="wall-draw-banner" role="status">
+          <p className="tool-hint">Drawing — click in the viewport to drop wall points. Finish when done.</p>
+          <button type="button" className="wall-finish" onClick={props.onFinishWall}>Finish wall</button>
+        </div>
+      ) : (
+        <p className="tool-hint">
+          Draw a free-form wall: click "New wall", then click points in the viewport to trace it. Toggle Smooth to round
+          its corners.
+        </p>
+      )}
+
+      <div className="band-list" role="list">
+        {walls.length === 0 ? (
+          <p className="tool-hint">No walls yet. Draw one below.</p>
+        ) : (
+          walls.map((wall) => (
+            <BandRow
+              key={wall.id}
+              label={`Wall ${wall.id}`}
+              detail={`${wall.points.length} pts · ${wall.cornerMode} · ${wall.style}`}
+              active={selectedWallId === wall.id}
+              onSelect={() => props.onSelectWall(wall.id)}
+              onRemove={() => props.onRemoveWall(wall.id)}
+            />
+          ))
+        )}
+      </div>
+
+      {selectedWall ? (
+        <>
+          <div className="tool-inspector-divider" />
+          <strong className="band-editor-title">Edit {selectedWall.id}</strong>
+          <p className="tool-hint">{selectedWall.points.length} points</p>
+          <div className="wall-corner-toggle" role="group" aria-label="Corner mode">
+            <button
+              type="button"
+              data-active={selectedWall.cornerMode === 'cornered'}
+              onClick={() => props.onUpdateWall(selectedWall.id, { cornerMode: 'cornered' })}
+            >
+              Cornered
+            </button>
+            <button
+              type="button"
+              data-active={selectedWall.cornerMode === 'smooth'}
+              onClick={() => props.onUpdateWall(selectedWall.id, { cornerMode: 'smooth' })}
+            >
+              Smooth
+            </button>
+          </div>
+          {selectedWall.cornerMode === 'smooth' ? (
+            <BandNumberField label="Corner radius" value={selectedWall.cornerRadius} step={0.5}
+              onChange={(cornerRadius) => props.onUpdateWall(selectedWall.id, { cornerRadius })} />
+          ) : null}
+          <BandNumberField label="Height" value={selectedWall.height} step={0.1}
+            onChange={(height) => props.onUpdateWall(selectedWall.id, { height })} />
+          <BandNumberField label="Segment" value={selectedWall.segmentLength} step={0.5}
+            onChange={(segmentLength) => props.onUpdateWall(selectedWall.id, { segmentLength })} />
+          <label>
+            <span>Style</span>
+            <select
+              value={selectedWall.style}
+              onChange={(event) => props.onUpdateWall(selectedWall.id, { style: event.currentTarget.value as WallStyle })}
+            >
+              <option value="armco">armco</option>
+              <option value="solid">solid</option>
+              <option value="tirewall">tire wall</option>
+            </select>
+          </label>
+          <BandTextField label="Material" value={selectedWall.materialId}
+            onChange={(materialId) => props.onUpdateWall(selectedWall.id, { materialId })} />
+        </>
+      ) : null}
+
+      {!isDrawingWall ? (
+        <>
+          <div className="tool-inspector-divider" />
+          <button type="button" onClick={props.onStartWall}>New wall</button>
+        </>
+      ) : null}
     </>
   );
 }

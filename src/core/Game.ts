@@ -7,7 +7,7 @@ import { WorkerPhysicsFacade } from '../systems/PhysicsSystem';
 import { LevelBuilder } from '../level/LevelBuilder';
 import { VehicleView } from '../render/VehicleView';
 import { VehicleDebugView } from '../render/VehicleDebugView';
-import { SkyDome } from '../render/SkyDome';
+import { SkyAtmosphere } from '../render/SkyAtmosphere';
 import { Scenery } from '../render/Scenery';
 import { SkidMarks } from '../render/SkidMarks';
 import { TireSmoke } from '../render/TireSmoke';
@@ -38,7 +38,7 @@ export class Game {
   private readonly world: WorldSpec;
   private readonly track: TrackDefinition;
   private readonly audio = new EngineAudio();
-  private readonly skyDome = new SkyDome();
+  private readonly sky = new SkyAtmosphere();
   private readonly scenery: Scenery | null = null;
   private skidMarks: SkidMarks | null = null;
   private tireSmoke: TireSmoke | null = null;
@@ -102,7 +102,7 @@ export class Game {
     this.hud.dispose();
     this.setupModal?.dispose();
     this.audio.dispose();
-    this.skyDome.dispose();
+    this.sky.dispose();
     this.scenery?.dispose();
     this.skidMarks?.dispose();
     this.tireSmoke?.dispose();
@@ -116,6 +116,40 @@ export class Game {
    * Debug-only: render one frame from a top-down orthographic-ish camera framing the
    * whole circuit, so an automated check can photograph the layout. Not used in play.
    */
+  // Debug accessor (used by e2e to confirm authored trackside data reached the
+  // sim): how many collidable barriers and timing checkpoints the loaded track
+  // carries. Cheap, read-only, no effect on the running game.
+  debugTrackInfo(): {
+    barriers: number;
+    checkpoints: number;
+    barriersByKind: Record<string, number>;
+    sampleByKind: Record<string, [number, number, number]>;
+  } {
+    const barriersByKind: Record<string, number> = {};
+    const sampleByKind: Record<string, [number, number, number]> = {};
+    for (const barrier of this.world.barriers) {
+      const kind = barrier.kind ?? 'armco';
+      barriersByKind[kind] = (barriersByKind[kind] ?? 0) + 1;
+      if (!sampleByKind[kind]) sampleByKind[kind] = barrier.center;
+    }
+    return {
+      barriers: this.world.barriers.length,
+      checkpoints: this.track.checkpoints.length,
+      barriersByKind,
+      sampleByKind,
+    };
+  }
+
+  // Debug-only: render one frame from an arbitrary eye looking at a target.
+  // Used to inspect specific scene geometry (e.g. barrier styles) close up.
+  captureLookAt(eye: [number, number, number], target: [number, number, number]): void {
+    this.paused = true;
+    const cam = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.5, 4000);
+    cam.position.set(eye[0], eye[1], eye[2]);
+    cam.lookAt(target[0], target[1], target[2]);
+    this.renderer.render(this.scene, cam);
+  }
+
   captureTopDown(): void {
     this.paused = true;
     const b = this.track.bounds;
@@ -167,9 +201,10 @@ export class Game {
   }
 
   private setupScene(): void {
-    // Tall gradient sky + PMREM environment built from the same gradient so paint reflects it.
-    this.scene.environment = this.skyDome.buildEnvironment(this.renderer);
-    this.scene.add(this.skyDome.mesh);
+    // Physically-based atmospheric sky + PMREM environment built from it so paint
+    // reflects the real sky. The atmosphere owns the sun direction (below).
+    this.scene.environment = this.sky.buildEnvironment(this.renderer);
+    this.scene.add(this.sky.mesh);
     if (this.scenery) this.scene.add(this.scenery.group);
     this.scene.fog = new THREE.Fog(SKY.FOG_COLOR, SKY.FOG_NEAR, SKY.FOG_FAR);
 
@@ -180,9 +215,17 @@ export class Game {
     fill.position.set(30, 18, 40);
     this.scene.add(fill);
 
-    // Low, warm golden-hour key light casting long soft shadows.
+    // Low, warm golden-hour key light casting long soft shadows. Its direction
+    // is taken from the atmosphere's sun so the brightest patch of sky, the
+    // shadows and the reflections all come from one agreed sun position.
     const sun = new THREE.DirectionalLight(LIGHTING.SUN_COLOR, LIGHTING.SUN_INTENSITY);
-    sun.position.set(LIGHTING.SUN_POSITION.x, LIGHTING.SUN_POSITION.y, LIGHTING.SUN_POSITION.z);
+    const sunDir = this.sky.sunDirection;
+    const sunDistance = 60;
+    sun.position.set(
+      LIGHTING.SUN_TARGET.x + sunDir.x * sunDistance,
+      LIGHTING.SUN_TARGET.y + sunDir.y * sunDistance,
+      LIGHTING.SUN_TARGET.z + sunDir.z * sunDistance,
+    );
     sun.target.position.set(LIGHTING.SUN_TARGET.x, LIGHTING.SUN_TARGET.y, LIGHTING.SUN_TARGET.z);
     sun.castShadow = true;
     sun.shadow.mapSize.set(LIGHTING.SHADOW_MAP_SIZE, LIGHTING.SHADOW_MAP_SIZE);

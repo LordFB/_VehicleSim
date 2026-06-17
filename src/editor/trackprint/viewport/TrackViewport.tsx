@@ -6,11 +6,13 @@ import {
   dot,
   evaluateStation,
   nearestStation,
+  resolveWallSegments,
   subtract,
   type ControlPoint,
   type StationLookup,
   type TrackDocument,
   type Vector2,
+  type WallInterval,
 } from '@trackprint/track-core';
 import {
   sampleTrackSurface,
@@ -41,6 +43,7 @@ export type EditorTool =
   | 'Elevation'
   | 'Banking'
   | 'Curbs'
+  | 'Walls'
   | 'Sectors'
   | 'Terrain'
   | 'Paint'
@@ -72,6 +75,8 @@ interface TrackViewportProps {
   readonly imageryCanvas: HTMLCanvasElement | null;
   readonly selectedBand: BandRef | null;
   readonly onAddControlPoint: (position: Vector2) => void;
+  readonly isDrawingWall: boolean;
+  readonly onAddWallPoint: (position: Vector2) => void;
   readonly onHoverStationChange: (station: number | null) => void;
   readonly onMoveControlPoint: (pointId: string, position: Vector2, elevation?: number) => void;
   readonly onPreviewMoveControlPoint: (pointId: string, position: Vector2, elevation?: number) => void;
@@ -285,6 +290,7 @@ export function TrackViewport(props: TrackViewportProps) {
   useEffect(() => {
     rebuildTrackObjects(
       props.document,
+      props.lookup,
       props.surface,
       props.display,
       props.selectedPoint,
@@ -306,6 +312,7 @@ export function TrackViewport(props: TrackViewportProps) {
     props.display.wireframe,
     props.display.structures,
     props.document,
+    props.lookup,
     props.selectedPoint,
     props.selectedStation,
     props.selectedBand,
@@ -387,6 +394,22 @@ export function TrackViewport(props: TrackViewportProps) {
     // hit, then iteratively walk the ray to where it meets the sampled terrain
     // height, re-sampling at each new XZ. A handful of iterations converges for
     // typical slopes; we fall back to the plane hit for near-horizontal rays.
+    // Flat-plane projection: the raw y=0 ray hit, with NO terrain following.
+    // Walls derive their own height from the nearest centerline (see
+    // elevationAtPoint / elevationNearPoint), so a wall click only needs a
+    // stable XZ. The terrain-following pointerToGround is discontinuous across
+    // the carved-corridor seam — sampling one side at the corridor floor and the
+    // other at full terrain height — which threw wall points sideways when
+    // clicking along a track edge. Projecting to the plane is seam-free and
+    // exact for that XZ.
+    const pointerToGroundPlane = (): Vector2 | null => {
+      const hit = new THREE.Vector3();
+      if (!raycaster.ray.intersectPlane(ground, hit)) {
+        return null;
+      }
+      return { x: hit.x, y: hit.z };
+    };
+
     const pointerToGround = (): Vector2 | null => {
       const hit = new THREE.Vector3();
       if (!raycaster.ray.intersectPlane(ground, hit)) {
@@ -489,6 +512,18 @@ export function TrackViewport(props: TrackViewportProps) {
       } else if (groundPosition && latestPropsRef.current.activeTool === 'Spline') {
         stopCameraGesture(event);
         latestPropsRef.current.onAddControlPoint(groundPosition);
+      } else if (
+        latestPropsRef.current.activeTool === 'Walls' &&
+        latestPropsRef.current.isDrawingWall
+      ) {
+        // Drawing a free-form wall: each click drops a point onto the polyline.
+        // Use the seam-free plane projection so points along a track edge land
+        // exactly under the cursor (terrain following jumps at the corridor seam).
+        const planePosition = pointerToGroundPlane();
+        if (planePosition) {
+          stopCameraGesture(event);
+          latestPropsRef.current.onAddWallPoint(planePosition);
+        }
       } else if (groundPosition && latestPropsRef.current.terrainBrush.active) {
         stopCameraGesture(event);
         cameraLocksRef.current.lock('terrain-brush');
@@ -570,8 +605,16 @@ export function TrackViewport(props: TrackViewportProps) {
         if (pendingDragFrame === null) {
           pendingDragFrame = requestAnimationFrame(flushDragMove);
         }
+      } else if (
+        latestPropsRef.current.activeTool === 'Walls' &&
+        latestPropsRef.current.isDrawingWall
+      ) {
+        // Wall draw preview: show the dot where the seam-free plane projection
+        // will actually drop the point, so the preview matches the placement.
+        updateSplinePlacementDot(rootRef.current, pointerToGroundPlane());
+        return;
       } else if (latestPropsRef.current.activeTool === 'Spline') {
-        // Update the ghost dot preview for the next-point placement.
+        // Ghost dot preview for the next spline anchor.
         updateSplinePlacementDot(rootRef.current, groundPosition);
         return;
       } else if (terrainBrushDragRef.current) {
@@ -649,8 +692,71 @@ function trackPointToTerrainPoint(point: Vector2): TerrainPoint {
   return { x: point.x, z: point.y };
 }
 
+const WALL_STYLE_COLORS: Record<WallInterval['style'], number> = {
+  armco: 0xc6ccd2,
+  solid: 0xb6b1a8,
+  tirewall: 0x23262b,
+};
+
+// Build the preview boxes for one drawn wall. Each box matches a resolved
+// barrier segment (same position/yaw/half-length the exporter emits), standing
+// on the nearest track elevation so it sits on the ground.
+function createWallMeshes(
+  document: TrackDocument,
+  lookup: StationLookup,
+  wall: WallInterval,
+  highlight: boolean,
+): THREE.Mesh[] {
+  const segments = resolveWallSegments(wall);
+  if (segments.length === 0) {
+    return [];
+  }
+  const thickness = wall.style === 'tirewall' ? 0.5 : 0.18;
+  const color = WALL_STYLE_COLORS[wall.style];
+  const material = new THREE.MeshStandardMaterial({
+    color,
+    roughness: wall.style === 'tirewall' ? 0.95 : 0.5,
+    metalness: wall.style === 'armco' ? 0.55 : 0.1,
+    emissive: highlight ? 0x14304a : 0x000000,
+  });
+  return segments.map((segment) => {
+    const ground = elevationAtPoint(document, lookup, segment.position);
+    const geometry = new THREE.BoxGeometry(thickness * 2, wall.height, segment.halfLength * 2 + 0.16);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(segment.position.x, ground + wall.height / 2, segment.position.y);
+    mesh.rotation.y = -segment.yawRad;
+    mesh.name = `wall:${wall.id}`;
+    return mesh;
+  });
+}
+
+// Track elevation nearest a world point, read from the document's elevation
+// curve — used to stand wall boxes on the track's vertical profile. Mirrors the
+// exporter's nearest-key sampling so preview and exported heights agree.
+function elevationAtPoint(document: TrackDocument, lookup: StationLookup, point: Vector2): number {
+  if (lookup.samples.length === 0) {
+    return 0;
+  }
+  const station = nearestStation(document, lookup, point).station;
+  const keys = document.elevation?.keys ?? [];
+  if (keys.length === 0) {
+    return 0;
+  }
+  let best = keys[0].value;
+  let bestDistance = Infinity;
+  for (const key of keys) {
+    const distance = Math.abs(key.station - station);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = key.value;
+    }
+  }
+  return best;
+}
+
 function rebuildTrackObjects(
   document: TrackDocument,
+  lookup: StationLookup,
   surface: CompileResult,
   display: TrackDisplayOptions,
   selectedPoint: string | null,
@@ -713,6 +819,14 @@ function rebuildTrackObjects(
         bandHandlesRef.current.forEach((handle) => trackRoot.add(handle));
       }
     }
+  }
+  // Authored walls: a run of oriented boxes following the offset edge, drawn
+  // straight from the same resolver the exporter uses so the preview and the
+  // collision geometry always match. Highlight when the Wall tool is active.
+  const wallsActive = activeTool === 'Walls';
+  for (const wall of document.walls ?? []) {
+    const meshes = createWallMeshes(document, lookup, wall, wallsActive);
+    meshes.forEach((mesh) => trackRoot.add(mesh));
   }
   if (display.centerline) {
     trackRoot.add(createCenterline(surface.crossSections));

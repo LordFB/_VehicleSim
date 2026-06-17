@@ -8,4 +8,5 @@ export * from './structures';
 export * from './surfaceBands';
 export * from './trackDocument';
 export * from './vector';
+export * from './walls';
 export * from './width';

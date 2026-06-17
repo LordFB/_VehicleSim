@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createDefaultTrackDocument } from '@trackprint/test-fixtures';
 import { compileTrackSurface } from '@trackprint/track-compiler';
-import { createStationLookup, repairTrackContinuity } from '@trackprint/track-core';
+import { createStationLookup, repairTrackContinuity, type TrackDocument } from '@trackprint/track-core';
 import {
   createVehicleSimTrackFromTrackPrint,
   serializeTrackPrintCollisionSurface,
@@ -30,7 +30,9 @@ describe('TrackPrint Vehicle Sim export adapter', () => {
     expect(track.features.generatedTerrain).toBe(false);
     expect(track.features.generatedScenery).toBe(false);
     expect(track.features.textureStyle).toBe('trackprint');
-    expect(track.checkpoints.length).toBeGreaterThanOrEqual(6);
+    // The default fixture authors 3 sectors, so checkpoints now track those
+    // sector boundaries (one per sector end) rather than the legacy even spacing.
+    expect(track.checkpoints).toHaveLength(3);
     expect(track.spawn.position[1]).toBeGreaterThan(0.5);
     expect(track.metadata.realLengthMeters).toBeGreaterThan(100);
   });
@@ -123,5 +125,104 @@ describe('TrackPrint Vehicle Sim export adapter', () => {
     expect(collision.layers.some((layer) => layer.id === 'trackprint-terrain')).toBe(true);
     expect(collision.layers.some((layer) => layer.id === 'trackprint-skirt')).toBe(true);
     expect(collision.layers.every((layer) => layer.positions.length > 0 && layer.indices.length > 0)).toBe(true);
+  });
+
+  it('emits oriented barriers for an authored wall (no longer barriers: [])', () => {
+    const base = createDefaultTrackDocument();
+    const source: typeof base = {
+      ...base,
+      walls: [
+        {
+          id: 'pit-wall',
+          points: [
+            { x: 50, y: 10 },
+            { x: 90, y: 10 },
+            { x: 90, y: 60 },
+          ],
+          cornerMode: 'cornered',
+          cornerRadius: 4,
+          height: 1.2,
+          segmentLength: 2,
+          style: 'armco',
+          materialId: 'armco',
+        },
+      ],
+    };
+    const track = createVehicleSimTrackFromTrackPrint(source);
+    expect(track.world.barriers.length).toBeGreaterThan(10);
+    // Each barrier stands on the ground (positive y-center) and is oriented.
+    for (const barrier of track.world.barriers) {
+      expect(barrier.center[1]).toBeGreaterThan(0);
+      expect(barrier.halfExtents[1]).toBeCloseTo(0.6, 2); // height/2
+      expect(typeof barrier.yawRad).toBe('number');
+    }
+    // The empty-document case still produces no barriers.
+    expect(createVehicleSimTrackFromTrackPrint(base).world.barriers).toHaveLength(0);
+  });
+
+  it('places timing checkpoints at authored sector boundaries, in order', () => {
+    const track = createVehicleSimTrackFromTrackPrint(createDefaultTrackDocument());
+    // Default fixture has 3 sectors → 3 checkpoints.
+    expect(track.checkpoints).toHaveLength(3);
+    // No-sector document falls back to even spacing at the requested count.
+    const noSectors = { ...createDefaultTrackDocument(), sectors: [] };
+    const fallback = createVehicleSimTrackFromTrackPrint(noSectors, { checkpointCount: 8 });
+    expect(fallback.checkpoints).toHaveLength(8);
+  });
+
+  it('honors an author-placed start/finish marker over the auto line', () => {
+    const auto = createVehicleSimTrackFromTrackPrint(createDefaultTrackDocument());
+    const placed = createVehicleSimTrackFromTrackPrint({
+      ...createDefaultTrackDocument(),
+      startFinish: { id: 'sf', station: 280 },
+    });
+    // The placed line sits at a different world position than the auto one.
+    const moved =
+      Math.hypot(
+        placed.startFinish.center[0] - auto.startFinish.center[0],
+        placed.startFinish.center[1] - auto.startFinish.center[1],
+      ) > 5;
+    expect(moved).toBe(true);
+  });
+
+  it('compiles a side-road aux path: its walls become extra barriers', () => {
+    const main = createDefaultTrackDocument();
+    const pit: TrackDocument = {
+      id: 'pit',
+      version: 1,
+      units: 'meters',
+      closed: false,
+      width: { left: { constant: 3 }, right: { constant: 3 } },
+      walls: [
+        {
+          id: 'pit-outer',
+          points: [
+            { x: 100, y: 24 },
+            { x: 160, y: 24 },
+          ],
+          cornerMode: 'cornered',
+          cornerRadius: 4,
+          height: 1,
+          segmentLength: 2,
+          style: 'solid',
+          materialId: 'concrete',
+        },
+      ],
+      segments: [
+        {
+          id: 'pit-seg',
+          kind: 'cubicBezier',
+          p0: { id: 'pp0', position: { x: 100, y: 20 } },
+          p1: { id: 'pp1', position: { x: 120, y: 20 } },
+          p2: { id: 'pp2', position: { x: 140, y: 20 } },
+          p3: { id: 'pp3', position: { x: 160, y: 20 } },
+        },
+      ],
+    };
+    const withoutAux = createVehicleSimTrackFromTrackPrint(main).world.barriers.length;
+    const withAux = createVehicleSimTrackFromTrackPrint({ ...main, auxPaths: [
+      { id: 'pitlane', role: 'pit', entryStation: 10, exitStation: 60, document: pit },
+    ] }).world.barriers.length;
+    expect(withAux).toBeGreaterThan(withoutAux);
   });
 });

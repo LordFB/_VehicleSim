@@ -40,16 +40,28 @@ export const LIGHTING = {
   SHADOW_RADIUS: 3, // PCF penumbra softening
 };
 
-// Tall vertical sky gradient (zenith -> horizon) + matching haze.
+// Atmospheric sky (Preetham scattering) + matching haze.
 export const SKY = {
-  ZENITH: 0x2f6fb0, // deep blue overhead
-  HORIZON: 0xdfe7ec, // pale warm horizon band
-  GROUND_TINT: 0xb7a988, // below-horizon wash
-  HORIZON_BLEND: 0.52, // where the warm band sits (0 horizon .. 1 zenith)
+  ZENITH: 0x2f6fb0, // deep blue overhead (legacy; used for fog/ambient fallbacks)
+  HORIZON: 0xdfe7ec, // pale warm horizon band (legacy)
+  GROUND_TINT: 0xb7a988, // below-horizon wash (legacy)
+  HORIZON_BLEND: 0.52, // where the warm band sits (0 horizon .. 1 zenith) (legacy)
   RADIUS: 800,
   FOG_COLOR: 0xe6dccb, // warm hazy horizon (golden-hour atmosphere)
   FOG_NEAR: 95,
   FOG_FAR: 540,
+  // Preetham atmospheric-scattering parameters (three's Sky shader). The shader
+  // outputs linear HDR radiance that the renderer's ACES tone-map then maps; the
+  // values are tuned so the sky lands in ACES's mid-range at the scene exposure
+  // (1.18) rather than clipping to white. Golden-hour read: modest haze, a warm
+  // low-sun Mie glow, a clear blue zenith.
+  TURBIDITY: 3.4,
+  RAYLEIGH: 1.5,
+  MIE_COEFFICIENT: 0.008,
+  MIE_DIRECTIONAL_G: 0.86,
+  // Extra output scale on the sky shader, applied via the material so the sky can
+  // be balanced against the foreground exposure without darkening the scene.
+  EXPOSURE: 0.42,
 };
 
 export const COLORS = {
@@ -90,18 +102,18 @@ export const COLORS = {
 
 // HUD / UI theme — Forza dial cluster + iRacing black box.
 export const HUD = {
-  ACCENT: '#3fb7ff', // primary cyan accent (sim-racing genre)
-  ACCENT_WARM: '#ff9d2f', // shift / warning
-  REDLINE: '#ff3b3b',
-  TEXT: '#f2f6fb',
-  TEXT_DIM: '#9fb0c0',
-  PANEL_BG: 'rgba(8, 12, 18, 0.62)',
-  PANEL_BORDER: 'rgba(120, 150, 180, 0.22)',
-  DIAL_TRACK: 'rgba(255, 255, 255, 0.10)',
-  DIAL_FILL: '#3fb7ff',
-  GOOD: '#37d47f',
-  DELTA_POS: '#ff5a4d', // slower than best (red)
-  DELTA_NEG: '#37d47f', // faster than best (green)
+  ACCENT: '#22c8ff', // TrackPrint cyan signal color
+  ACCENT_WARM: '#ffcf5a', // shift / warning
+  REDLINE: '#ff5f72',
+  TEXT: '#f7fcff',
+  TEXT_DIM: '#7f9bb5',
+  PANEL_BG: 'rgba(4, 16, 31, 0.86)',
+  PANEL_BORDER: 'rgba(55, 183, 255, 0.26)',
+  DIAL_TRACK: 'rgba(55, 183, 255, 0.18)',
+  DIAL_FILL: '#22c8ff',
+  GOOD: '#45e59d',
+  DELTA_POS: '#ff5f72', // slower than best (red)
+  DELTA_NEG: '#45e59d', // faster than best (green)
 };
 
 export const DEBUG_VISUALS = {

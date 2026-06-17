@@ -1,9 +1,17 @@
 import { compileTrackSurface, sampleTrackSurface, type CompileResult } from '@trackprint/track-compiler';
-import { createStationLookup, repairTrackContinuity, type TrackDocument } from '@trackprint/track-core';
+import {
+  createStationLookup,
+  evaluateStation,
+  normalizeStation,
+  repairTrackContinuity,
+  resolveWallSegments,
+  type StationLookup,
+  type TrackDocument,
+} from '@trackprint/track-core';
 import baseWorld from '../../sim/data/testWorld.json';
 import type { TrackDefinition, TrackId } from '../../level/TrackDefinition';
 import type { SerializableTrackPrintSurface, SerializableTrackPrintTerrainMesh } from '../../level/TrackDefinition';
-import type { MeshSurfaceSpec, SurfaceMaterialId, TerrainTrackSample, Vec3Tuple, WorldSpec } from '../../sim/types';
+import type { BarrierSpec, MeshSurfaceSpec, SurfaceMaterialId, TerrainTrackSample, Vec3Tuple, WorldSpec } from '../../sim/types';
 
 export type VehicleSimTrackPrintExportOptions = {
   id?: Extract<TrackId, 'trackprint'>;
@@ -39,10 +47,25 @@ export function createVehicleSimTrackFromTrackPrint(
     6,
   );
   const shoulderWidth = options.shoulderWidth ?? 4;
+
+  // Author-placed start/finish (if any) overrides the legacy auto-placement
+  // 6 m ahead of sample 0. The spawn sits just behind the line, facing along it.
+  const startFinish = resolveStartFinish(document, lookup, start, headingRad, halfWidth);
   const spawn = {
-    position: [start.pos[0], start.elevation + 0.72, start.pos[1]] as Vec3Tuple,
-    yawRad: headingRad,
+    position: [
+      startFinish.center[0] - Math.sin(startFinish.headingRad) * 6,
+      elevationNearStation(centerline, startFinishStation(document, lookup)) + 0.72,
+      startFinish.center[1] - Math.cos(startFinish.headingRad) * 6,
+    ] as Vec3Tuple,
+    yawRad: startFinish.headingRad,
   };
+
+  const barriers: BarrierSpec[] = [
+    ...wallBarriers(document.walls, centerline),
+    ...pointBarriers(document, centerline),
+    ...auxPathBarriers(document),
+  ];
+
   const world: WorldSpec = {
     gravity: baseWorld.gravity,
     defaultMaterialId: 'grass',
@@ -57,7 +80,7 @@ export function createVehicleSimTrackFromTrackPrint(
         heightOffset: -0.08,
       },
     ],
-    barriers: [],
+    barriers,
     terrainTrack: {
       samples: centerline,
       halfWidth,
@@ -70,16 +93,11 @@ export function createVehicleSimTrackFromTrackPrint(
     id: options.id ?? 'trackprint',
     displayName: options.displayName ?? displayNameForTrackPrint(document.id),
     world,
-    startFinish: {
-      center: [start.pos[0] + start.tangent[0] * 6, start.pos[1] + start.tangent[1] * 6],
-      width: halfWidth * 2 + 0.8,
-      depth: 1.4,
-      headingRad,
-    },
+    startFinish,
     spawn,
     centerline,
     trackPath: [...centerline.map((p) => p.pos), centerline[0].pos],
-    checkpoints: checkpoints(centerline, options.checkpointCount ?? 10, halfWidth),
+    checkpoints: checkpoints(document, lookup, centerline, options.checkpointCount ?? 10, halfWidth),
     bounds,
     features: {
       generatedGround: false,
@@ -319,19 +337,210 @@ function boundsOf(samples: TerrainTrackSample[]): { minX: number; maxX: number; 
   return { minX, maxX, minZ, maxZ };
 }
 
+// Timing checkpoints. If the author has placed sectors, each sector's END
+// station becomes one checkpoint (in order), so the LapTimer's per-checkpoint
+// splits line up with the authored sector boundaries — sector i end == split i.
+// With no sectors we fall back to the legacy even spacing.
 function checkpoints(
+  document: TrackDocument,
+  lookup: StationLookup,
   samples: TerrainTrackSample[],
   requestedCount: number,
   halfWidth: number,
 ): Array<{ x: number; z: number; radius: number }> {
+  const radius = halfWidth + 7;
+  const sectors = (document.sectors ?? []).filter((sector) => Number.isFinite(sector.endStation));
+  if (sectors.length > 0 && lookup.totalLength > 0) {
+    return [...sectors]
+      .sort((a, b) => a.endStation - b.endStation)
+      .map((sector) => {
+        const point = pointAtStation(samples, lookup, sector.endStation);
+        return { x: point[0], z: point[1], radius };
+      });
+  }
   const count = Math.max(1, Math.floor(requestedCount));
   const out: Array<{ x: number; z: number; radius: number }> = [];
   for (let i = 1; i <= count; i += 1) {
     const index = Math.floor((i / (count + 1)) * (samples.length - 1));
     const p = samples[index];
-    out.push({ x: p.pos[0], z: p.pos[1], radius: halfWidth + 7 });
+    out.push({ x: p.pos[0], z: p.pos[1], radius });
   }
   return out;
+}
+
+// The station the start/finish line sits at: the author's marker, else 0.
+function startFinishStation(document: TrackDocument, lookup: StationLookup): number {
+  return document.startFinish ? normalizeStation(document.startFinish.station, lookup) : 0;
+}
+
+// Resolve the exported start/finish line. An author-placed marker sets the
+// station (and optional heading offset); otherwise we keep the historical
+// behavior — the line 6 m ahead of centerline sample 0.
+function resolveStartFinish(
+  document: TrackDocument,
+  lookup: StationLookup,
+  start: TerrainTrackSample,
+  autoHeadingRad: number,
+  halfWidth: number,
+): TrackDefinition['startFinish'] {
+  const width = halfWidth * 2 + 0.8;
+  const depth = 1.4;
+  if (!document.startFinish) {
+    return {
+      center: [start.pos[0] + start.tangent[0] * 6, start.pos[1] + start.tangent[1] * 6],
+      width,
+      depth,
+      headingRad: autoHeadingRad,
+    };
+  }
+  const station = normalizeStation(document.startFinish.station, lookup);
+  const evaluation = evaluateStation(document, lookup, station);
+  const headingRad = Math.atan2(evaluation.tangent.x, evaluation.tangent.y) + (document.startFinish.headingOffsetRad ?? 0);
+  const lateral = document.startFinish.lateralOffset ?? 0;
+  return {
+    center: [evaluation.position.x + evaluation.normal.x * lateral, evaluation.position.y + evaluation.normal.y * lateral],
+    width,
+    depth,
+    headingRad,
+  };
+}
+
+// Turn every authored wall into a run of oriented barrier boxes laid along the
+// drawn polyline — this is what replaces the long-standing `barriers: []`. Walls
+// are free-drawn in world coordinates, so each resolved box sits at the nearest
+// centerline elevation plus half its height to stand on the ground.
+function wallBarriers(walls: TrackDocument['walls'], samples: TerrainTrackSample[], idPrefix = ''): BarrierSpec[] {
+  const out: BarrierSpec[] = [];
+  for (const wall of walls ?? []) {
+    const segments = resolveWallSegments(wall);
+    const thickness = wall.style === 'tirewall' ? 0.5 : 0.18;
+    segments.forEach((segment, index) => {
+      const ground = elevationNearPoint(samples, segment.position.x, segment.position.y);
+      out.push({
+        id: `${idPrefix}${wall.id}-${index}`,
+        center: [segment.position.x, ground + segment.height / 2, segment.position.y],
+        halfExtents: [thickness, segment.height / 2, segment.halfLength + 0.08],
+        yawRad: segment.yawRad,
+        kind: wall.style,
+      });
+    });
+  }
+  return out;
+}
+
+// Walls drawn on a side-road compile through the SAME resolver. Aux walls are
+// world-space polylines too, so they only need the aux path's elevation samples
+// to stand on the ground. Flattened into the one world barrier list.
+function auxPathBarriers(mainDocument: TrackDocument): BarrierSpec[] {
+  const out: BarrierSpec[] = [];
+  for (const aux of mainDocument.auxPaths ?? []) {
+    if (!aux.document.walls?.length) {
+      continue;
+    }
+    const auxDoc = repairTrackContinuity(aux.document);
+    if (auxDoc.segments.length === 0) {
+      continue;
+    }
+    const auxLookup = createStationLookup(auxDoc, 128);
+    const auxSamples = auxLookup.totalLength > 0 ? auxCenterlineSamples(auxDoc, auxLookup) : [];
+    out.push(...wallBarriers(aux.document.walls, auxSamples, `${aux.id}-`));
+  }
+  return out;
+}
+
+// A lightweight elevation-bearing sample list for an aux path, used only so the
+// wall resolver can stand its barriers on the ground. Cheaper than a full
+// resampleAsQuadRows — aux paths are short.
+function auxCenterlineSamples(document: TrackDocument, lookup: StationLookup): TerrainTrackSample[] {
+  const count = Math.max(2, Math.min(512, Math.ceil(lookup.totalLength / 1)));
+  const samples: TerrainTrackSample[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const station = (i / (count - 1)) * lookup.totalLength;
+    const evaluation = evaluateStation(document, lookup, station);
+    const elevation = elevationFromCurve(document, station);
+    samples.push({
+      pos: [evaluation.position.x, evaluation.position.y],
+      tangent: [evaluation.tangent.x, evaluation.tangent.y],
+      left: [evaluation.normal.x, evaluation.normal.y],
+      normal: [0, 1, 0],
+      curvature: 0,
+      s: station,
+      realS: station,
+      elevation,
+      camber: 0,
+    });
+  }
+  return samples;
+}
+
+function elevationFromCurve(document: TrackDocument, station: number): number {
+  const keys = document.elevation?.keys ?? [];
+  if (keys.length === 0) {
+    return 0;
+  }
+  // Nearest-key elevation is enough for standing barriers on a short aux path.
+  let best = keys[0].value;
+  let bestDistance = Infinity;
+  for (const key of keys) {
+    const distance = Math.abs(key.station - station);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = key.value;
+    }
+  }
+  return best;
+}
+
+// Free-standing point barriers (bollards/blocks) become a single oriented box
+// each, standing on the ground beneath their placed position.
+function pointBarriers(document: TrackDocument, samples: TerrainTrackSample[]): BarrierSpec[] {
+  return (document.pointBarriers ?? []).map((barrier) => {
+    const ground = elevationNearPoint(samples, barrier.position.x, barrier.position.y);
+    return {
+      id: barrier.id,
+      center: [barrier.position.x, ground + barrier.halfExtents[1], barrier.position.y],
+      halfExtents: [barrier.halfExtents[0], barrier.halfExtents[1], barrier.halfExtents[2]],
+      yawRad: barrier.yawRad,
+      kind: barrier.style,
+    };
+  });
+}
+
+function pointAtStation(
+  samples: TerrainTrackSample[],
+  lookup: StationLookup,
+  station: number,
+): [number, number] {
+  const s = normalizeStation(station, lookup);
+  const fraction = lookup.totalLength > 0 ? s / lookup.totalLength : 0;
+  const index = Math.min(samples.length - 1, Math.max(0, Math.round(fraction * (samples.length - 1))));
+  return samples[index].pos;
+}
+
+function elevationNearStation(samples: TerrainTrackSample[], station: number): number {
+  let best = samples[0]?.elevation ?? 0;
+  let bestDistance = Infinity;
+  for (const sample of samples) {
+    const distance = Math.abs(sample.s - station);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = sample.elevation;
+    }
+  }
+  return best;
+}
+
+function elevationNearPoint(samples: TerrainTrackSample[], x: number, z: number): number {
+  let best = samples[0]?.elevation ?? 0;
+  let bestDistance = Infinity;
+  for (const sample of samples) {
+    const distance = Math.hypot(sample.pos[0] - x, sample.pos[1] - z);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = sample.elevation;
+    }
+  }
+  return best;
 }
 
 function displayNameForTrackPrint(id: string): string {

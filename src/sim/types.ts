@@ -84,11 +84,15 @@ export type MeshSurfaceSpec = {
   cellSize?: number;
 };
 
+export type BarrierKind = 'armco' | 'solid' | 'tirewall';
+
 export type BarrierSpec = {
   id: string;
   center: Vec3Tuple;
   halfExtents: Vec3Tuple;
   yawRad?: number;
+  /** Visual style. Omitted defaults to 'armco' (the existing guardrail look). */
+  kind?: BarrierKind;
 };
 
 export type WorldSpec = {
