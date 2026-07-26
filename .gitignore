@@ -4,6 +4,7 @@ test-results/
 playwright-report/
 coverage/
 .vite/
+_Trackprint/
 debug.log
 npm-debug.log*
 .env
