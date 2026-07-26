@@ -14,8 +14,10 @@ describe('Scenery', () => {
     });
     // Everything that repeats must be an InstancedMesh; no per-object plain Mesh leaks.
     expect(meshes.length).toBe(0);
-    // hills + 3 tree layers + posts + reflectors = 6 instanced draw groups.
-    expect(instancedCount).toBe(6);
+    // hills + billboard tree chunks + posts + reflectors. This can grow with cull chunks,
+    // but must stay bounded instead of scaling with individual trees.
+    expect(instancedCount).toBeGreaterThanOrEqual(6);
+    expect(instancedCount).toBeLessThanOrEqual(26);
     scenery.dispose();
   });
 
@@ -63,6 +65,24 @@ describe('Scenery', () => {
     expect(onRibbon).toBe(0);
     // The overwhelming majority sit inside (or right at the soft edge of) a real mass.
     expect(inAMass / total).toBeGreaterThan(0.9);
+    scenery.dispose();
+  });
+
+  it('uses species-aware broadleaf billboard chunks with culling enabled', () => {
+    const scenery = new Scenery();
+    const billboardChunks: THREE.InstancedMesh[] = [];
+    const species = new Set<string>();
+    scenery.group.traverse((obj) => {
+      if (obj instanceof THREE.InstancedMesh && obj.name.startsWith('scenery-tree-billboard-')) {
+        billboardChunks.push(obj);
+        expect(obj.frustumCulled).toBe(true);
+        const speciesId = obj.userData.speciesId;
+        if (typeof speciesId === 'string') species.add(speciesId);
+      }
+    });
+
+    expect(billboardChunks.length).toBeGreaterThan(4);
+    expect([...species]).toEqual(expect.arrayContaining(['hornbeam', 'horse-chestnut', 'plane', 'wild-cherry', 'lime']));
     scenery.dispose();
   });
 });

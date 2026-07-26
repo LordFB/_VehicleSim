@@ -4,6 +4,7 @@ export const Events = {
   PHYSICS_ERROR: 'physics:error',
   TELEMETRY_TOGGLE_REQUESTED: 'telemetry:toggleRequested',
   AUDIO_TOGGLE_REQUESTED: 'audio:toggleRequested',
+  CAMERA_MODE_CYCLE_REQUESTED: 'camera:modeCycleRequested',
   LAP_COMPLETED: 'lap:completed',
   LAP_TIMER_RESET: 'lap:reset',
   GAMEPAD_CONNECTED: 'input:gamepadConnected',

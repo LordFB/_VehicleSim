@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { COLORS } from '../core/Constants';
+import { COLORS, VEHICLE_VIEW } from '../core/Constants';
 import type { PhysicsSnapshot, VehicleSpec, WheelId } from '../sim/types';
+import type { CameraMode } from './RaceCamera';
 
 const WHEEL_IDS: WheelId[] = ['frontLeft', 'frontRight', 'rearLeft', 'rearRight'];
 
@@ -20,6 +21,8 @@ export class VehicleView {
   private readonly wheelMaterials = new Map<WheelId, THREE.MeshStandardMaterial>();
   private readonly suspensionArms: Array<{ link: THREE.Object3D; wheel: WheelId; anchor: THREE.Vector3 }> = [];
   private readonly disposables: Array<THREE.BufferGeometry | THREE.Material> = [];
+  private readonly smoothedChassisOrientation = new THREE.Quaternion();
+  private chassisSmoothingInitialized = false;
 
   constructor(spec: VehicleSpec, environment: THREE.Texture | null = null) {
     this.group.name = 'vehicle-view';
@@ -44,11 +47,8 @@ export class VehicleView {
     this.buildHalo(halo);
     this.buildRearWing(wing, accent);
 
-    for (const part of this.chassis.children) {
-      const mesh = part as THREE.Mesh;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-    }
+    // Tiny aero pieces do not need individual shadow-map draws. The four tires
+    // carry the contact shadow, while direct lighting still shapes the body.
 
     this.buildWheels(spec, environment);
     this.buildSuspension(spec, halo);
@@ -73,11 +73,12 @@ export class VehicleView {
     this.chassis.add(tub);
     this.disposables.push(tubGeo);
 
-    // Livery: a bold accent spine down the top of the tub, plus a thin gold pinstripe.
-    this.box(accent, 0.3, 0.02, 2.2, 0, 0.09, 0.2);
-    this.box(accent2, 0.1, 0.022, 2.2, 0, 0.095, 0.2);
+    // Livery panels sit clear of one another to avoid coplanar depth flicker.
+    this.box(accent, 0.24, 0.018, 2.2, 0, 0.112, 0.2);
+    this.box(accent2, 0.035, 0.016, 2.2, -0.16, 0.122, 0.2);
+    this.box(accent2, 0.035, 0.016, 2.2, 0.16, 0.122, 0.2);
     // Engine cover sloping down behind the cockpit toward the rear axle.
-    const cover = new THREE.Mesh(taper(new THREE.BoxGeometry(0.5, 0.34, 1.3), 0.5, 0.2), carbon);
+    const cover = new THREE.Mesh(taper(new THREE.BoxGeometry(0.5, 0.34, 1.3), 0.5, 0.2), accent);
     cover.position.set(0, -0.04, -1.05);
     this.chassis.add(cover);
   }
@@ -108,11 +109,11 @@ export class VehicleView {
 
   private buildSidepods(carbon: THREE.Material, accent: THREE.Material): void {
     for (const side of [-1, 1]) {
-      const pod = new THREE.Mesh(taper(new THREE.BoxGeometry(0.42, 0.34, 1.5), 0.45, 0.9), carbon);
+      const pod = new THREE.Mesh(taper(new THREE.BoxGeometry(0.42, 0.34, 1.5), 0.45, 0.9), accent);
       pod.position.set(side * 0.62, -0.18, -0.45);
       this.chassis.add(pod);
       // Radiator inlet mouth (dark) facing forward.
-      this.box(accent, 0.3, 0.2, 0.05, side * 0.62, -0.16, 0.32);
+      this.box(carbon, 0.3, 0.2, 0.05, side * 0.62, -0.16, 0.32);
     }
   }
 
@@ -193,7 +194,7 @@ export class VehicleView {
 
       const tireMaterial = tireProto.clone();
       // Slick tyre: a fat low-profile cylinder with a subtly bulged shoulder.
-      const tireGeo = new THREE.CylinderGeometry(r, r, width, 32);
+      const tireGeo = new THREE.CylinderGeometry(r, r, width, 20);
       const tire = new THREE.Mesh(tireGeo, tireMaterial);
       tire.rotation.z = Math.PI / 2;
       tire.castShadow = true;
@@ -201,26 +202,23 @@ export class VehicleView {
       this.disposables.push(tireGeo, tireMaterial);
 
       // Brake disc inboard of the rim.
-      const discGeo = new THREE.CylinderGeometry(r * 0.62, r * 0.62, width * 0.5, 20);
+      const discGeo = new THREE.CylinderGeometry(r * 0.58, r * 0.58, width * 0.18, 16);
       const disc = new THREE.Mesh(discGeo, discMat);
       disc.rotation.z = Math.PI / 2;
       wheelGroup.add(disc);
       this.disposables.push(discGeo);
 
-      // 5-spoke machined alloy rim face on the outboard side.
+      // A recessed forged wheel avoids six overlapping meshes per corner.
       const rim = new THREE.Group();
-      const hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.5, r * 0.5, width * 0.96, 24), rimMat);
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.39, r * 0.39, width * 0.22, 16), rimMat);
       hub.rotation.z = Math.PI / 2;
       rim.add(hub);
       this.disposables.push(hub.geometry);
-      const spokeGeo = new THREE.BoxGeometry(r * 0.9, 0.03, 0.05);
-      for (let s = 0; s < 5; s += 1) {
-        const spoke = new THREE.Mesh(spokeGeo, rimMat);
-        spoke.rotation.x = Math.PI / 2;
-        spoke.rotation.y = (s / 5) * Math.PI * 2;
-        rim.add(spoke);
-      }
-      this.disposables.push(spokeGeo);
+      const rimRingGeo = new THREE.TorusGeometry(r * 0.42, r * 0.075, 6, 16);
+      const rimRing = new THREE.Mesh(rimRingGeo, rimMat);
+      rimRing.rotation.y = Math.PI / 2;
+      rim.add(rimRing);
+      this.disposables.push(rimRingGeo);
       wheelGroup.add(rim);
 
       this.group.add(wheelGroup);
@@ -242,7 +240,7 @@ export class VehicleView {
       const anchor = new THREE.Vector3(Math.sign(wheelSpec.localPosition[0]) * 0.22, -0.28, wheelSpec.localPosition[2]);
       for (let i = 0; i < 2; i += 1) {
         const link = new THREE.Mesh(linkGeo, mat);
-        link.castShadow = true;
+        link.castShadow = false;
         this.group.add(link);
         this.suspensionArms.push({ link, wheel: wheelSpec.id, anchor: anchor.clone().add(new THREE.Vector3(0, i === 0 ? 0.04 : 0.16, 0)) });
       }
@@ -291,8 +289,8 @@ export class VehicleView {
     return mesh;
   }
 
-  applySnapshot(snapshot: PhysicsSnapshot): void {
-    setPose(this.chassis, snapshot.chassis.position, snapshot.chassis.orientation);
+  applySnapshot(snapshot: PhysicsSnapshot, delta = 1 / 60): void {
+    this.applyChassisPose(snapshot, delta);
     for (const id of WHEEL_IDS) {
       const wheel = this.wheels.get(id);
       const wheelSnapshot = snapshot.wheels[id];
@@ -300,18 +298,43 @@ export class VehicleView {
       setPose(wheel, wheelSnapshot.pose.position, wheelSnapshot.pose.orientation);
       const telemetry = snapshot.telemetry.wheels[id];
       const material = this.wheelMaterials.get(id);
-      if (material && telemetry) {
-        material.color.setHex(temperatureColor(telemetry.tireSurfaceTempC, telemetry.tireMuScale));
-        material.emissive.setHex(telemetry.brakeTempC > 500 ? 0x441000 : 0x000000);
-        material.emissiveIntensity = telemetry.brakeTempC > 500 ? Math.min(0.5, (telemetry.brakeTempC - 500) / 500) : 0;
-      }
+      if (material && telemetry) material.color.setHex(COLORS.WHEEL);
     }
     this.orientLinks();
+  }
+
+  resetSmoothing(): void {
+    this.chassisSmoothingInitialized = false;
+  }
+
+  setCameraMode(mode: CameraMode): void {
+    this.chassis.visible = mode !== 'onboard';
   }
 
   dispose(): void {
     for (const disposable of this.disposables) disposable.dispose();
     this.disposables.length = 0;
+  }
+
+  private applyChassisPose(snapshot: PhysicsSnapshot, delta: number): void {
+    this.chassis.position.set(
+      snapshot.chassis.position[0],
+      snapshot.chassis.position[1],
+      snapshot.chassis.position[2],
+    );
+    const target = new THREE.Quaternion(
+      snapshot.chassis.orientation[0],
+      snapshot.chassis.orientation[1],
+      snapshot.chassis.orientation[2],
+      snapshot.chassis.orientation[3],
+    );
+    if (!this.chassisSmoothingInitialized) {
+      this.smoothedChassisOrientation.copy(target);
+      this.chassisSmoothingInitialized = true;
+    } else {
+      this.smoothedChassisOrientation.slerp(target, frameAlpha(VEHICLE_VIEW.CHASSIS_ORIENTATION_LERP, delta));
+    }
+    this.chassis.quaternion.copy(this.smoothedChassisOrientation);
   }
 }
 
@@ -345,8 +368,6 @@ function setPose(object: THREE.Object3D, position: [number, number, number], ori
   object.quaternion.set(orientation[0], orientation[1], orientation[2], orientation[3]);
 }
 
-function temperatureColor(surfaceTempC: number, muScale: number): number {
-  if (surfaceTempC < 65) return COLORS.TIRE_COLD;
-  if (surfaceTempC > 118 || muScale < 0.82) return COLORS.TIRE_HOT;
-  return COLORS.TIRE_READY;
+function frameAlpha(lerp: number, delta: number): number {
+  return 1 - Math.pow(1 - lerp, delta * 60);
 }

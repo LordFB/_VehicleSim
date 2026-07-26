@@ -10,6 +10,7 @@ import {
 import { createTrackPrintSurfaceVisual, createTrackPrintTerrainVisual } from './TrackPrintTerrainVisual';
 import type { TrackFeatures } from './TrackDefinition';
 import { TRACK_HALF_WIDTH } from './MonzaTrack';
+import { createMonzaDetailVisuals } from './MonzaDetail';
 
 /** Plain rectangle spec for the rendered start/finish line (purely cosmetic). */
 export type StartFinishLine = {
@@ -64,6 +65,7 @@ export class LevelBuilder {
     this.createBarriers();
     this.createBanking();
     this.createLandmarks();
+    this.createMonzaDetail();
   }
 
   dispose(): void {
@@ -429,6 +431,14 @@ export class LevelBuilder {
     }
   }
 
+  private createMonzaDetail(): void {
+    const detail = this.features.monzaDetail;
+    if (!detail) return;
+    const asset = createMonzaDetailVisuals(detail);
+    this.scene.add(asset.object);
+    this.disposables.push(...asset.disposables);
+  }
+
   private trackEdges(): { left: Array<[number, number]>; right: Array<[number, number]> } {
     const left: Array<[number, number]> = [];
     const right: Array<[number, number]> = [];
@@ -513,22 +523,41 @@ export class LevelBuilder {
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = size;
     const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#24262b';
+    ctx.fillStyle = '#22252a';
     ctx.fillRect(0, 0, size, size);
-    for (let i = 0; i < 22000; i++) {
+    for (let i = 0; i < 32000; i++) {
       const x = seededUnit(i * 17 + 5) * size;
       const y = seededUnit(i * 31 + 11) * size;
-      const v = 18 + Math.floor(seededUnit(i * 7 + 3) * 36);
-      const a = 0.11 + seededUnit(i * 13 + 19) * 0.23;
+      const v = 16 + Math.floor(seededUnit(i * 7 + 3) * 42);
+      const a = 0.08 + seededUnit(i * 13 + 19) * 0.28;
       ctx.fillStyle = `rgba(${v},${v},${v + 3},${a})`;
-      ctx.fillRect(x, y, 1.4, 1.4);
+      const px = seededUnit(i * 29 + 23) > 0.9 ? 2.2 : 1.2;
+      ctx.fillRect(x, y, px, px);
     }
-    ctx.fillStyle = 'rgba(5,6,8,0.18)';
-    ctx.fillRect(size * 0.3, 0, size * 0.07, size);
-    ctx.fillRect(size * 0.63, 0, size * 0.07, size);
-    ctx.fillStyle = 'rgba(230,232,220,0.055)';
-    ctx.fillRect(5, 0, 5, size);
-    ctx.fillRect(size - 10, 0, 5, size);
+    const rubber = ctx.createLinearGradient(0, 0, size, 0);
+    rubber.addColorStop(0, 'rgba(0,0,0,0)');
+    rubber.addColorStop(0.27, 'rgba(2,3,4,0.22)');
+    rubber.addColorStop(0.36, 'rgba(2,3,4,0.34)');
+    rubber.addColorStop(0.48, 'rgba(0,0,0,0.04)');
+    rubber.addColorStop(0.62, 'rgba(2,3,4,0.34)');
+    rubber.addColorStop(0.72, 'rgba(2,3,4,0.22)');
+    rubber.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = rubber;
+    ctx.fillRect(0, 0, size, size);
+    for (let i = 0; i < 180; i++) {
+      const x = size * (0.24 + seededUnit(i * 41 + 9) * 0.52);
+      const y = seededUnit(i * 53 + 2) * size;
+      const h = 18 + seededUnit(i * 67 + 4) * 80;
+      ctx.fillStyle = `rgba(5,6,8,${0.05 + seededUnit(i * 71 + 1) * 0.12})`;
+      ctx.fillRect(x, y, 0.8 + seededUnit(i * 17) * 1.8, h);
+    }
+    ctx.fillStyle = 'rgba(245,245,235,0.038)';
+    for (let y = 0; y < size; y += 64) ctx.fillRect(0, y + 0.5, size, 1);
+    ctx.fillStyle = 'rgba(8,9,12,0.16)';
+    for (let x = 42; x < size; x += 96) ctx.fillRect(x, 0, 1, size);
+    ctx.fillStyle = 'rgba(230,232,220,0.06)';
+    ctx.fillRect(5, 0, 4, size);
+    ctx.fillRect(size - 9, 0, 4, size);
     const texture = new THREE.CanvasTexture(canvas);
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
     texture.repeat.set(1, 3);

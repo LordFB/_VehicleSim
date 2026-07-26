@@ -12,10 +12,69 @@ export type TrackLandmark = {
   yawRad: number;
 };
 
+export type TreeSpeciesSpec = {
+  id: string;
+  label: string;
+  weight: number;
+  minHeight: number;
+  maxHeight: number;
+  canopyColor: number;
+  highlightColor: number;
+  trunkColor: number;
+  crownWidth: number;
+};
+
+export type MonzaDetailPolyline = {
+  name: string;
+  points: Array<[number, number]>;
+  width?: number;
+};
+
+export type MonzaDetailBox = {
+  name: string;
+  center: Vec3Tuple;
+  size: Vec3Tuple;
+  yawRad: number;
+  color?: number;
+};
+
+export type MonzaPaintedRunoff = {
+  name: string;
+  center: [number, number];
+  size: [number, number];
+  yawRad: number;
+  color: 'green' | 'white' | 'red';
+};
+
+export type MonzaBrakingBoard = {
+  label: string;
+  position: Vec3Tuple;
+  yawRad: number;
+};
+
+export type MonzaOpenTopoProfile = {
+  source: string;
+  fetched: string;
+  baseElevationMeters: number;
+  scale: number;
+  controls: Array<{ realS: number; elevation: number }>;
+};
+
+export type MonzaDetailSpec = {
+  treeSpecies: TreeSpeciesSpec[];
+  serviceRoads: MonzaDetailPolyline[];
+  fenceRuns: MonzaDetailPolyline[];
+  builtAreas: MonzaDetailBox[];
+  paintedRunoffs: MonzaPaintedRunoff[];
+  brakingBoards: MonzaBrakingBoard[];
+  openTopo: MonzaOpenTopoProfile;
+};
+
 export type TrackFeatures = {
   banking?: BankingSpec;
   forests?: ForestMass[];
   landmarks?: TrackLandmark[];
+  monzaDetail?: MonzaDetailSpec;
   generatedGround?: boolean;
   generatedTerrain?: boolean;
   generatedKerbs?: boolean;

@@ -37,6 +37,53 @@ test('reset works repeatedly and resize keeps the canvas visible', async ({ page
   expect(box?.height).toBeGreaterThan(500);
 });
 
+test('camera modes cycle to onboard and survive reset and resize', async ({ page }) => {
+  test.setTimeout(45_000);
+  const errors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  await page.goto('/?e2e=1&debug=1');
+  await page.waitForFunction(
+    () => Boolean((window as unknown as { __game?: { currentCameraMode: () => string } }).__game),
+    null,
+    { timeout: 15_000 },
+  );
+
+  await page.evaluate(() => {
+    (window as unknown as { __game?: { forceCameraMode: (mode: 'onboard') => void } }).__game?.forceCameraMode('onboard');
+  });
+  const mode = await page.evaluate(() =>
+    (window as unknown as { __game?: { currentCameraMode: () => string } }).__game?.currentCameraMode(),
+  );
+  expect(mode).toBe('onboard');
+
+  await page.keyboard.press('KeyC');
+  const cycled = await page.evaluate(() =>
+    (window as unknown as { __game?: { currentCameraMode: () => string } }).__game?.currentCameraMode(),
+  );
+  expect(cycled).toBe('nose');
+
+  for (let i = 0; i < 3; i += 1) {
+    await page.keyboard.press('KeyR');
+    await page.waitForTimeout(150);
+  }
+  await page.evaluate(() => {
+    (window as unknown as { __game?: { forceCameraMode: (mode: 'onboard') => void } }).__game?.forceCameraMode('onboard');
+  });
+  await page.setViewportSize({ width: 960, height: 640 });
+  const canvas = page.locator('canvas[data-engine]');
+  await expect(canvas).toBeVisible();
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  const dataUrlLength = await page.evaluate(() => {
+    const canvas = document.querySelector('canvas[data-engine]') as HTMLCanvasElement | null;
+    return canvas?.toDataURL('image/png').length ?? 0;
+  });
+  expect(dataUrlLength).toBeGreaterThan(10_000);
+  expect(errors).toEqual([]);
+});
+
 test('car setup modal remains operable after TrackPrint UI styling', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: /setup/i }).click();

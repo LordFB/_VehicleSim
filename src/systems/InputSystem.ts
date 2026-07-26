@@ -48,7 +48,7 @@ export class InputSystem {
   private joystickCenter = { x: 0, y: 0 };
   private joystickKnob: HTMLDivElement | null = null;
   // Edge-detection state for gamepad buttons (press -> single action).
-  private padPrev = { shiftUp: false, shiftDown: false, reset: false, mode: false };
+  private padPrev = { shiftUp: false, shiftDown: false, reset: false, mode: false, camera: false };
   private gamepadSeen = false;
 
   constructor(root: HTMLElement) {
@@ -123,12 +123,14 @@ export class InputSystem {
     const padShiftDown = buttonPressed(gamepad, PAD.LB);
     const padReset = buttonPressed(gamepad, PAD.MENU);
     const padMode = buttonPressed(gamepad, PAD.VIEW);
+    const padCamera = buttonPressed(gamepad, PAD.DPAD_UP);
 
     const shiftUp = this.consumeShiftUp() || edge(padShiftUp, this.padPrev.shiftUp);
     const shiftDown = this.consumeShiftDown() || edge(padShiftDown, this.padPrev.shiftDown);
     if (edge(padReset, this.padPrev.reset)) eventBus.emit(Events.SIM_RESET_REQUESTED, {});
     if (edge(padMode, this.padPrev.mode)) this.toggleAutoShift();
-    this.padPrev = { shiftUp: padShiftUp, shiftDown: padShiftDown, reset: padReset, mode: padMode };
+    if (edge(padCamera, this.padPrev.camera)) eventBus.emit(Events.CAMERA_MODE_CYCLE_REQUESTED, {});
+    this.padPrev = { shiftUp: padShiftUp, shiftDown: padShiftDown, reset: padReset, mode: padMode, camera: padCamera };
 
     const handbrake =
       this.keys.has('Space') || this.touchHandbrake || buttonPressed(gamepad, PAD.A) ? 1 : 0;
@@ -173,6 +175,7 @@ export class InputSystem {
     if (event.code === 'KeyE' || event.code === 'ShiftRight') this.shiftUpLatch = true;
     if (event.code === 'KeyQ' || event.code === 'ControlRight') this.shiftDownLatch = true;
     if (event.code === 'KeyG') this.toggleAutoShift();
+    if (event.code === 'KeyC') eventBus.emit(Events.CAMERA_MODE_CYCLE_REQUESTED, {});
     // Reset is owned by Game (resets physics + lap timer + skid marks) via the event bus.
     if (event.code === 'KeyR') eventBus.emit(Events.SIM_RESET_REQUESTED, {});
     if (event.code === 'KeyT') eventBus.emit(Events.TELEMETRY_TOGGLE_REQUESTED, {});

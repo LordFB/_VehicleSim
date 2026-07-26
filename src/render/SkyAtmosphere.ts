@@ -66,11 +66,19 @@ export class SkyAtmosphere {
    */
   buildEnvironment(renderer: THREE.WebGLRenderer): THREE.Texture {
     this.pmrem = new THREE.PMREMGenerator(renderer);
+    // PMREM precompiles the equirect shader so the first fromScene call isn't
+    // doing a cold shader compile under the render budget.
+    this.pmrem.compileEquirectangularShader();
     const scene = new THREE.Scene();
+    // The environment is direction-only, so capture from a unit-scale box at the
+    // origin — rendering the 960-unit display box into all six PMREM faces was
+    // heavy enough to push first-frame past the boot budget intermittently.
+    const previousScale = this.mesh.scale.x;
+    this.mesh.scale.setScalar(1);
     scene.add(this.mesh);
-    this.envTexture = this.pmrem.fromScene(scene).texture;
-    // The caller reparents the mesh into the real scene after this.
+    this.envTexture = this.pmrem.fromScene(scene, 0.04).texture;
     scene.remove(this.mesh);
+    this.mesh.scale.setScalar(previousScale);
     return this.envTexture;
   }
 

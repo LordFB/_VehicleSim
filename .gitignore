@@ -6,3 +6,4 @@ coverage/
 .vite/
 debug.log
 npm-debug.log*
+.env

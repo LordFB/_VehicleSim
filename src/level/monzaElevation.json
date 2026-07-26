@@ -1,0 +1,258 @@
+{
+  "source": "OpenTopography SRTMGL1 30m",
+  "fetched": "2026-06-17",
+  "controls": [
+    {
+      "realS": 0,
+      "elevation": 186.39
+    },
+    {
+      "realS": 611.7,
+      "elevation": 188.67
+    },
+    {
+      "realS": 625.9,
+      "elevation": 188.71
+    },
+    {
+      "realS": 640.3,
+      "elevation": 189
+    },
+    {
+      "realS": 654.6,
+      "elevation": 189
+    },
+    {
+      "realS": 666.9,
+      "elevation": 189.56
+    },
+    {
+      "realS": 676.9,
+      "elevation": 189.92
+    },
+    {
+      "realS": 805.4,
+      "elevation": 193.15
+    },
+    {
+      "realS": 855.9,
+      "elevation": 194.93
+    },
+    {
+      "realS": 1005.6,
+      "elevation": 195.98
+    },
+    {
+      "realS": 1047.6,
+      "elevation": 193.22
+    },
+    {
+      "realS": 1096.5,
+      "elevation": 192.59
+    },
+    {
+      "realS": 1151.7,
+      "elevation": 190.26
+    },
+    {
+      "realS": 1214.6,
+      "elevation": 189.1
+    },
+    {
+      "realS": 1279.4,
+      "elevation": 194.48
+    },
+    {
+      "realS": 1348.5,
+      "elevation": 195.14
+    },
+    {
+      "realS": 1425.2,
+      "elevation": 193.31
+    },
+    {
+      "realS": 1624.5,
+      "elevation": 192.37
+    },
+    {
+      "realS": 1829.9,
+      "elevation": 196.69
+    },
+    {
+      "realS": 1844,
+      "elevation": 196.14
+    },
+    {
+      "realS": 1874.3,
+      "elevation": 194.75
+    },
+    {
+      "realS": 1888.8,
+      "elevation": 194.89
+    },
+    {
+      "realS": 1944.7,
+      "elevation": 192.67
+    },
+    {
+      "realS": 2178.4,
+      "elevation": 196.29
+    },
+    {
+      "realS": 2209.3,
+      "elevation": 195.6
+    },
+    {
+      "realS": 2234.7,
+      "elevation": 195.19
+    },
+    {
+      "realS": 2257.2,
+      "elevation": 194.6
+    },
+    {
+      "realS": 2286.1,
+      "elevation": 192.27
+    },
+    {
+      "realS": 2312.8,
+      "elevation": 191.07
+    },
+    {
+      "realS": 2546.9,
+      "elevation": 190.3
+    },
+    {
+      "realS": 2568.8,
+      "elevation": 188.91
+    },
+    {
+      "realS": 2585,
+      "elevation": 189.95
+    },
+    {
+      "realS": 2732.9,
+      "elevation": 194.33
+    },
+    {
+      "realS": 2911.7,
+      "elevation": 196.24
+    },
+    {
+      "realS": 2985.3,
+      "elevation": 195
+    },
+    {
+      "realS": 3041.8,
+      "elevation": 192.56
+    },
+    {
+      "realS": 3281.1,
+      "elevation": 190.6
+    },
+    {
+      "realS": 3617.3,
+      "elevation": 190.4
+    },
+    {
+      "realS": 3645.5,
+      "elevation": 189.41
+    },
+    {
+      "realS": 3663.9,
+      "elevation": 190.02
+    },
+    {
+      "realS": 3698.2,
+      "elevation": 192.04
+    },
+    {
+      "realS": 3725.2,
+      "elevation": 192.87
+    },
+    {
+      "realS": 3752.9,
+      "elevation": 193.2
+    },
+    {
+      "realS": 3789.2,
+      "elevation": 191
+    },
+    {
+      "realS": 3822.4,
+      "elevation": 189.27
+    },
+    {
+      "realS": 3841.9,
+      "elevation": 189.83
+    },
+    {
+      "realS": 3939.6,
+      "elevation": 187.71
+    },
+    {
+      "realS": 4786.4,
+      "elevation": 181.08
+    },
+    {
+      "realS": 4827,
+      "elevation": 181
+    },
+    {
+      "realS": 4855.3,
+      "elevation": 180.99
+    },
+    {
+      "realS": 4886.2,
+      "elevation": 181.52
+    },
+    {
+      "realS": 4921.1,
+      "elevation": 181.81
+    },
+    {
+      "realS": 4951,
+      "elevation": 181.93
+    },
+    {
+      "realS": 4986.5,
+      "elevation": 181.77
+    },
+    {
+      "realS": 5019.2,
+      "elevation": 181.16
+    },
+    {
+      "realS": 5062.1,
+      "elevation": 179.44
+    },
+    {
+      "realS": 5103.1,
+      "elevation": 177.98
+    },
+    {
+      "realS": 5149.8,
+      "elevation": 179.55
+    },
+    {
+      "realS": 5198.9,
+      "elevation": 179.72
+    },
+    {
+      "realS": 5256.2,
+      "elevation": 183.1
+    },
+    {
+      "realS": 5359.6,
+      "elevation": 181.88
+    },
+    {
+      "realS": 5481,
+      "elevation": 181.22
+    },
+    {
+      "realS": 5792.9,
+      "elevation": 186.39
+    }
+  ]
+}

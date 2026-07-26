@@ -11,7 +11,9 @@ import { SkyAtmosphere } from '../render/SkyAtmosphere';
 import { Scenery } from '../render/Scenery';
 import { SkidMarks } from '../render/SkidMarks';
 import { TireSmoke } from '../render/TireSmoke';
-import { getRaceCameraPose } from '../render/RaceCamera';
+import { CameraController } from '../render/CameraController';
+import { CockpitWheelView } from '../render/CockpitWheelView';
+import type { CameraMode } from '../render/RaceCamera';
 import { TelemetryOverlay } from '../ui/TelemetryOverlay';
 import { Hud } from '../ui/Hud';
 import { SetupModal } from '../ui/SetupModal';
@@ -28,6 +30,7 @@ export class Game {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
+  private readonly cameraController: CameraController;
   private readonly input: InputSystem;
   private readonly physics = new WorkerPhysicsFacade();
   private readonly level: LevelBuilder;
@@ -42,14 +45,9 @@ export class Game {
   private readonly scenery: Scenery | null = null;
   private skidMarks: SkidMarks | null = null;
   private tireSmoke: TireSmoke | null = null;
-  private readonly cameraPosition = new THREE.Vector3();
-  private readonly cameraTarget = new THREE.Vector3();
-  private readonly desiredCameraPosition = new THREE.Vector3();
-  private readonly desiredCameraTarget = new THREE.Vector3();
-  private cameraInitialized = false;
-  private currentFov = CAMERA.FOV;
   private vehicleView: VehicleView | null = null;
   private vehicleDebugView: VehicleDebugView | null = null;
+  private cockpitWheelView: CockpitWheelView | null = null;
   private seed = SIM.INITIAL_SEED;
   private status: HTMLDivElement;
   private hasMoved = false;
@@ -71,6 +69,9 @@ export class Game {
 
     this.renderer = this.createRenderer();
     this.camera = this.createCamera();
+    this.cameraController = new CameraController(this.camera, (mode) => {
+      this.flashStatus(`Camera: ${cameraModeLabel(mode)}`);
+    });
     this.input = new InputSystem(container);
     this.telemetry = new TelemetryOverlay(container);
     this.hud = new Hud(container, defaultVehicleJson as VehicleSpec, this.lapTimer.trackPath());
@@ -87,6 +88,7 @@ export class Game {
         this.track.bounds,
         this.track.trackPath,
         this.track.features.forests,
+        this.track.features.monzaDetail?.treeSpecies,
       );
     }
     this.status = this.createStatus();
@@ -97,6 +99,7 @@ export class Game {
     this.renderer.setAnimationLoop(null);
     this.input.dispose();
     this.physics.dispose();
+    this.cameraController.dispose();
     this.level.dispose();
     this.telemetry.dispose();
     this.hud.dispose();
@@ -108,6 +111,7 @@ export class Game {
     this.tireSmoke?.dispose();
     this.vehicleView?.dispose();
     this.vehicleDebugView?.dispose();
+    this.cockpitWheelView?.dispose();
     for (const unsub of this.unsubs) unsub();
     this.renderer.dispose();
   }
@@ -138,6 +142,18 @@ export class Game {
       barriersByKind,
       sampleByKind,
     };
+  }
+
+  currentCameraMode(): CameraMode {
+    return this.cameraController.getMode();
+  }
+
+  cycleCameraMode(): CameraMode {
+    return this.cameraController.cycleMode();
+  }
+
+  forceCameraMode(mode: CameraMode): void {
+    this.cameraController.setMode(mode);
   }
 
   // Debug-only: render one frame from an arbitrary eye looking at a target.
@@ -249,7 +265,7 @@ export class Game {
       eventBus.on(Events.SIM_RESET_REQUESTED, () => this.reset()),
       eventBus.on(Events.TELEMETRY_TOGGLE_REQUESTED, () => this.telemetry.toggle()),
       eventBus.on(Events.AUDIO_TOGGLE_REQUESTED, () => this.audio.toggleMuted()),
-      eventBus.on(Events.GAMEPAD_CONNECTED, () => this.flashStatus('Controller connected · LS steer · RT/LT throttle/brake · RB/LB shift · A handbrake · View toggles auto')),
+      eventBus.on(Events.GAMEPAD_CONNECTED, () => this.flashStatus('Controller connected - LS steer - RT/LT throttle/brake - RB/LB shift - A handbrake - View auto/manual - D-pad up camera')),
       eventBus.on<{ autoShift: boolean }>(Events.SHIFT_MODE_CHANGED, ({ autoShift }) => this.flashStatus(`Transmission: ${autoShift ? 'AUTOMATIC' : 'MANUAL'}`)),
       eventBus.on<{ message: string }>(Events.PHYSICS_ERROR, ({ message }) => {
         this.status.textContent = `Physics error: ${message}`;
@@ -281,17 +297,19 @@ export class Game {
 
     this.vehicleView = new VehicleView(defaultVehicleJson as VehicleSpec, this.scene.environment);
     this.vehicleDebugView = new VehicleDebugView();
+    this.cockpitWheelView = new CockpitWheelView(this.scene.environment);
     this.skidMarks = new SkidMarks();
     this.tireSmoke = new TireSmoke();
     this.scene.add(this.vehicleView.group);
     this.scene.add(this.vehicleDebugView.group);
+    this.scene.add(this.cockpitWheelView.group);
     this.scene.add(this.skidMarks.mesh);
     this.scene.add(this.tireSmoke.points);
     gameState.started = true;
     const pad = this.input.hasGamepad();
     this.status.textContent = pad
-      ? `${this.track.displayName} - Controller: LS steer - RT/LT throttle/brake - RB/LB shift - A handbrake - View=auto/manual`
-      : `${this.track.displayName} - A/D steer - W/S throttle/brake - E/Q shift - G auto/manual - Space handbrake - R reset - T telemetry - M mute`;
+      ? `${this.track.displayName} - Controller: LS steer - RT/LT throttle/brake - RB/LB shift - A handbrake - View=auto/manual - D-pad up camera`
+      : `${this.track.displayName} - A/D steer - W/S throttle/brake - E/Q shift - C camera - G auto/manual - Space handbrake - R reset - T telemetry - M mute`;
   }
 
   private animate(): void {
@@ -305,8 +323,12 @@ export class Game {
     const snapshot = this.physics.getSnapshot();
     if (snapshot && this.vehicleView) {
       gameState.latestSnapshot = snapshot;
-      this.vehicleView.applySnapshot(snapshot);
+      const cameraMode = this.cameraController.getMode();
+      this.vehicleView.applySnapshot(snapshot, delta);
+      this.vehicleView.setCameraMode(cameraMode);
       this.vehicleDebugView?.applySnapshot(snapshot);
+      this.cockpitWheelView?.applySnapshot(snapshot);
+      this.cockpitWheelView?.setCameraMode(cameraMode);
       this.telemetry.update(snapshot.telemetry);
       this.skidMarks?.update(snapshot);
       this.tireSmoke?.update(snapshot, delta);
@@ -320,27 +342,7 @@ export class Game {
   }
 
   private updateCamera(snapshot: NonNullable<typeof gameState.latestSnapshot>, delta: number): void {
-    const pose = getRaceCameraPose(snapshot);
-    this.desiredCameraPosition.copy(pose.position);
-    this.desiredCameraTarget.copy(pose.target);
-    if (!this.cameraInitialized) {
-      this.cameraPosition.copy(this.desiredCameraPosition);
-      this.cameraTarget.copy(this.desiredCameraTarget);
-      this.cameraInitialized = true;
-    }
-    const positionAlpha = 1 - Math.pow(1 - CAMERA.LERP, delta * 60);
-    const targetAlpha = 1 - Math.pow(1 - CAMERA.TARGET_LERP, delta * 60);
-    this.cameraPosition.lerp(this.desiredCameraPosition, positionAlpha);
-    this.cameraTarget.lerp(this.desiredCameraTarget, targetAlpha);
-
-    this.currentFov += (pose.fov - this.currentFov) * (1 - Math.pow(1 - CAMERA.FOV_LERP, delta * 60));
-    if (Math.abs(this.camera.fov - this.currentFov) > 0.01) {
-      this.camera.fov = this.currentFov;
-      this.camera.updateProjectionMatrix();
-    }
-
-    this.camera.position.copy(this.cameraPosition);
-    this.camera.lookAt(this.cameraTarget);
+    this.cameraController.update(snapshot, delta);
   }
 
   private updateStartPrompt(snapshot: NonNullable<typeof gameState.latestSnapshot>): void {
@@ -358,7 +360,8 @@ export class Game {
     this.physics.reset(this.seed);
     this.lapTimer.reset();
     this.skidMarks?.clear();
-    this.cameraInitialized = false;
+    this.cameraController.reset();
+    this.vehicleView?.resetSmoothing();
     this.hasMoved = false;
     this.status.classList.remove('status--hidden');
   }
@@ -376,4 +379,10 @@ export class Game {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   }
+}
+
+function cameraModeLabel(mode: CameraMode): string {
+  if (mode === 'onboard') return 'Onboard';
+  if (mode === 'nose') return 'Nose';
+  return 'Chase';
 }

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { SCENERY } from '../core/Constants';
+import type { TreeSpeciesSpec } from '../level/TrackDefinition';
+import { MONZA_TREE_SPECIES } from '../level/MonzaDetail';
 
 /**
  * Environmental scenery that gives the world a sense of place — the single biggest
@@ -24,10 +26,11 @@ export type ForestMass = { cx: number; cz: number; hx: number; hz: number };
 
 export class Scenery {
   readonly group = new THREE.Group();
-  private readonly disposables: Array<THREE.BufferGeometry | THREE.Material> = [];
+  private readonly disposables: Array<THREE.BufferGeometry | THREE.Material | THREE.Texture> = [];
   private readonly bounds: TrackBounds;
   private readonly postLine: Array<[number, number]>;
   private readonly forests: ForestMass[];
+  private readonly treeSpecies: TreeSpeciesSpec[];
 
   /**
    * @param bounds   the circuit's footprint; trees are kept off the racing surface.
@@ -36,10 +39,11 @@ export class Scenery {
    * @param forests  real woodland masses (Parco di Monza, from OSM) to fill with trees;
    *                 when omitted, trees scatter uniformly over the footprint instead.
    */
-  constructor(bounds?: TrackBounds, postLine?: Array<[number, number]>, forests?: ForestMass[]) {
+  constructor(bounds?: TrackBounds, postLine?: Array<[number, number]>, forests?: ForestMass[], treeSpecies?: TreeSpeciesSpec[]) {
     this.bounds = bounds ?? { minX: -22, maxX: 22, minZ: -50, maxZ: 90 };
     this.postLine = postLine ?? defaultPostLine();
     this.forests = forests ?? [];
+    this.treeSpecies = treeSpecies?.length ? treeSpecies : MONZA_TREE_SPECIES;
     this.group.name = 'scenery';
     const rng = mulberry32(SCENERY.SEED);
     this.buildHills(rng);
@@ -79,29 +83,22 @@ export class Scenery {
     this.group.add(mesh);
   }
 
-  /** A scattered conifer forest ring: each tree is a trunk + two foliage cones. */
+  /** Broadleaf park woodland: trunks plus alpha-tested billboard canopy chunks. */
   private buildForest(rng: () => number): void {
     const count = SCENERY.TREE_COUNT;
     const trunkGeo = new THREE.CylinderGeometry(0.16, 0.26, 1, 6);
-    const foliageGeo = new THREE.ConeGeometry(1, 1, 8);
-    this.disposables.push(trunkGeo, foliageGeo);
+    const billboardGeo = new THREE.PlaneGeometry(1, 1, 1, 1);
+    this.disposables.push(trunkGeo, billboardGeo);
 
     const trunks = new THREE.InstancedMesh(trunkGeo, this.trunkMaterial(), count);
-    const lower = new THREE.InstancedMesh(foliageGeo, this.foliageMaterial(0), count);
-    const upper = new THREE.InstancedMesh(foliageGeo, this.foliageMaterial(1), count);
     trunks.name = 'scenery-tree-trunks';
-    lower.name = 'scenery-tree-lower';
-    upper.name = 'scenery-tree-upper';
-    for (const im of [trunks, lower, upper]) {
-      im.castShadow = false; // distant; shadows would thrash the shadow atlas for no gain
-      im.receiveShadow = false;
-    }
+    trunks.castShadow = false; // distant; shadows would thrash the shadow atlas for no gain
+    trunks.receiveShadow = false;
 
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const pos = new THREE.Vector3();
     const scl = new THREE.Vector3();
-    const tint = new THREE.Color();
     const clearance = SCENERY.TREE_CORRIDOR_HALF; // keep trees this far off the ribbon edge
     // Area-weighted picker over the real Parco di Monza woodland masses (from OSM). When
     // no masses are supplied, fall back to a uniform scatter over the footprint.
@@ -115,17 +112,23 @@ export class Scenery {
     const cumAreas: number[] = [];
     let areaSum = 0;
     for (const f of this.forests) { areaSum += f.hx * f.hz; cumAreas.push(areaSum); }
+    const speciesCum: number[] = [];
+    let speciesWeight = 0;
+    for (const s of this.treeSpecies) { speciesWeight += Math.max(0.001, s.weight); speciesCum.push(speciesWeight); }
+    const billboards = new Map<string, Array<{ x: number; z: number; height: number; yaw: number; species: TreeSpeciesSpec }>>();
 
     let placed = 0;
     let guard = 0;
     while (placed < count && guard < count * 12) {
       guard++;
       let x: number, z: number;
+      let massIndex = 0;
       if (useMasses) {
         // Pick a mass by area, then a point inside it (corners slightly soft so the
         // wood reads organic, not a hard rectangle).
         const r = rng() * areaSum;
         let fi = 0; while (fi < cumAreas.length - 1 && r > cumAreas[fi]) fi++;
+        massIndex = fi;
         const f = this.forests[fi];
         x = f.cx + (rng() * 2 - 1) * f.hx * 1.06;
         z = f.cz + (rng() * 2 - 1) * f.hz * 1.06;
@@ -141,15 +144,10 @@ export class Scenery {
         this.onRibbon(x, z, clearance)
       ) continue;
 
-      const scale = SCENERY.TREE_MIN_H + rng() * (SCENERY.TREE_MAX_H - SCENERY.TREE_MIN_H);
+      const species = this.pickSpecies(rng, speciesCum, speciesWeight);
+      const scale = species.minHeight + rng() * (species.maxHeight - species.minHeight);
       const yaw = rng() * Math.PI * 2;
       q.setFromAxisAngle(UP, yaw);
-
-      // Per-tree foliage tint: a real tree-line is never one flat green. Jitter hue
-      // toward yellow/blue and lightness so the forest reads as many trees, not a wall.
-      tint.setHSL(0.30 + (rng() - 0.5) * 0.05, 0.45 + rng() * 0.2, 0.5 + (rng() - 0.5) * 0.28);
-      lower.setColorAt(placed, tint);
-      upper.setColorAt(placed, tint);
 
       const trunkH = scale * 0.42;
       pos.set(x, trunkH * 0.5, z);
@@ -157,17 +155,10 @@ export class Scenery {
       m.compose(pos, q, scl);
       trunks.setMatrixAt(placed, m);
 
-      const lowerH = scale * 0.7;
-      pos.set(x, trunkH + lowerH * 0.4, z);
-      scl.set(scale * 0.62, lowerH, scale * 0.62);
-      m.compose(pos, q, scl);
-      lower.setMatrixAt(placed, m);
-
-      const upperH = scale * 0.55;
-      pos.set(x, trunkH + lowerH * 0.7 + upperH * 0.3, z);
-      scl.set(scale * 0.42, upperH, scale * 0.42);
-      m.compose(pos, q, scl);
-      upper.setMatrixAt(placed, m);
+      const key = `${massIndex}:${species.id}`;
+      const chunk = billboards.get(key) ?? [];
+      chunk.push({ x, z, height: scale, yaw, species });
+      billboards.set(key, chunk);
 
       placed++;
     }
@@ -175,13 +166,40 @@ export class Scenery {
     for (let i = placed; i < count; i++) {
       m.compose(ZERO, q, ZERO_SCALE);
       trunks.setMatrixAt(i, m);
-      lower.setMatrixAt(i, m);
-      upper.setMatrixAt(i, m);
     }
-    for (const im of [trunks, lower, upper]) im.instanceMatrix.needsUpdate = true;
-    if (lower.instanceColor) lower.instanceColor.needsUpdate = true;
-    if (upper.instanceColor) upper.instanceColor.needsUpdate = true;
-    this.group.add(trunks, lower, upper);
+    trunks.instanceMatrix.needsUpdate = true;
+    trunks.computeBoundingBox();
+    trunks.computeBoundingSphere();
+    this.group.add(trunks);
+
+    for (const [key, trees] of billboards) {
+      const species = trees[0]?.species;
+      if (!species) continue;
+      const material = this.billboardMaterial(species);
+      const mesh = new THREE.InstancedMesh(billboardGeo, material, trees.length);
+      mesh.name = `scenery-tree-billboard-${key.replace(':', '-')}`;
+      mesh.userData.speciesId = species.id;
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      trees.forEach((tree, i) => {
+        q.setFromAxisAngle(UP, tree.yaw);
+        pos.set(tree.x, tree.height * 0.58, tree.z);
+        scl.set(tree.height * species.crownWidth, tree.height, 1);
+        m.compose(pos, q, scl);
+        mesh.setMatrixAt(i, m);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingBox();
+      mesh.computeBoundingSphere();
+      this.group.add(mesh);
+    }
+  }
+
+  private pickSpecies(rng: () => number, cumWeights: number[], total: number): TreeSpeciesSpec {
+    const r = rng() * total;
+    let i = 0;
+    while (i < cumWeights.length - 1 && r > cumWeights[i]) i++;
+    return this.treeSpecies[i] ?? this.treeSpecies[0];
   }
 
   /** True if (x,z) is within `margin` metres of the track ribbon centerline. */
@@ -276,14 +294,17 @@ export class Scenery {
     return mat;
   }
 
-  private foliageMaterial(tier: number): THREE.Material {
-    // White base so the per-instance tint (setColorAt) reads true; the upper tier is
-    // kept a touch brighter for a sunlit-canopy gradient.
+  private billboardMaterial(species: TreeSpeciesSpec): THREE.Material {
+    const texture = makeTreeBillboardTexture(species);
+    this.disposables.push(texture);
     const mat = new THREE.MeshStandardMaterial({
-      color: tier === 0 ? 0xcfcfcf : 0xffffff,
+      color: 0xffffff,
+      map: texture,
+      alphaTest: 0.34,
+      transparent: true,
       roughness: 0.9,
       metalness: 0,
-      flatShading: true,
+      side: THREE.DoubleSide,
     });
     this.disposables.push(mat);
     return mat;
@@ -340,4 +361,48 @@ function mulberry32(seed: number): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+function makeTreeBillboardTexture(species: TreeSpeciesSpec): THREE.Texture {
+  const width = 64;
+  const height = 128;
+  const data = new Uint8Array(width * height * 4);
+  const canopy = new THREE.Color(species.canopyColor);
+  const highlight = new THREE.Color(species.highlightColor);
+  const trunk = new THREE.Color(species.trunkColor);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const u = (x + 0.5) / width;
+      const v = (y + 0.5) / height;
+      const idx = (y * width + x) * 4;
+      const trunkMask = Math.abs(u - 0.5) < 0.055 && v < 0.5;
+      const crownA = ellipse(u, v, 0.5, 0.58, 0.42, 0.35);
+      const crownB = ellipse(u, v, 0.36, 0.72, 0.24, 0.22);
+      const crownC = ellipse(u, v, 0.64, 0.71, 0.24, 0.22);
+      const crownD = ellipse(u, v, 0.5, 0.86, 0.29, 0.18);
+      const crown = Math.max(crownA, crownB, crownC, crownD);
+      if (crown > 0) {
+        const shade = 0.62 + 0.38 * Math.max(0, 1 - Math.hypot(u - 0.38, v - 0.78) * 2.1);
+        const color = canopy.clone().lerp(highlight, shade * 0.55);
+        data[idx] = Math.round(color.r * 255);
+        data[idx + 1] = Math.round(color.g * 255);
+        data[idx + 2] = Math.round(color.b * 255);
+        data[idx + 3] = Math.round(255 * Math.min(1, crown * 1.4));
+      } else if (trunkMask) {
+        data[idx] = Math.round(trunk.r * 255);
+        data[idx + 1] = Math.round(trunk.g * 255);
+        data[idx + 2] = Math.round(trunk.b * 255);
+        data[idx + 3] = 235;
+      }
+    }
+  }
+  const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function ellipse(u: number, v: number, cx: number, cy: number, rx: number, ry: number): number {
+  const d = ((u - cx) * (u - cx)) / (rx * rx) + ((v - cy) * (v - cy)) / (ry * ry);
+  return d < 1 ? 1 - d : 0;
 }

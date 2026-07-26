@@ -90,6 +90,104 @@
       "cz": 779.1,
       "hx": 24.6,
       "hz": 43.2
+    },
+    {
+      "name": "satellite-main-straight-west",
+      "cx": 42,
+      "cz": 235,
+      "hx": 54,
+      "hz": 250
+    },
+    {
+      "name": "satellite-main-straight-east",
+      "cx": -70,
+      "cz": 285,
+      "hx": 58,
+      "hz": 210
+    },
+    {
+      "name": "satellite-rettifilo-chicane-canopy",
+      "cx": -88,
+      "cz": 485,
+      "hx": 78,
+      "hz": 80
+    },
+    {
+      "name": "satellite-curva-grande-outer",
+      "cx": -335,
+      "cz": 560,
+      "hx": 210,
+      "hz": 105
+    },
+    {
+      "name": "satellite-roggia-approach",
+      "cx": -540,
+      "cz": 390,
+      "hx": 92,
+      "hz": 145
+    },
+    {
+      "name": "satellite-roggia-exit",
+      "cx": -640,
+      "cz": 60,
+      "hx": 86,
+      "hz": 145
+    },
+    {
+      "name": "satellite-lesmo-north",
+      "cx": -595,
+      "cz": -115,
+      "hx": 122,
+      "hz": 110
+    },
+    {
+      "name": "satellite-lesmo-south",
+      "cx": -500,
+      "cz": -305,
+      "hx": 115,
+      "hz": 95
+    },
+    {
+      "name": "satellite-serraglio-corridor",
+      "cx": -350,
+      "cz": -385,
+      "hx": 170,
+      "hz": 70
+    },
+    {
+      "name": "satellite-ascari-outer",
+      "cx": -145,
+      "cz": -520,
+      "hx": 170,
+      "hz": 105
+    },
+    {
+      "name": "satellite-ascari-inner",
+      "cx": -8,
+      "cz": -310,
+      "hx": 62,
+      "hz": 120
+    },
+    {
+      "name": "satellite-parabolica-outer",
+      "cx": 105,
+      "cz": -145,
+      "hx": 98,
+      "hz": 150
+    },
+    {
+      "name": "satellite-parabolica-exit-stand-trees",
+      "cx": 75,
+      "cz": 42,
+      "hx": 58,
+      "hz": 115
+    },
+    {
+      "name": "satellite-paddock-tree-rows",
+      "cx": -12,
+      "cz": 170,
+      "hx": 34,
+      "hz": 130
     }
   ],
   "banking": {

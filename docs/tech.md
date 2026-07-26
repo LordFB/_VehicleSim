@@ -28,4 +28,5 @@
 
 - OpenStreetMap-derived geometry must include attribution and ODbL notes.
 - DEM/elevation detail may be procedural or from open sources with attribution.
+- OpenTopography/OpenTopo-derived DEM samples may be committed as deterministic JSON when the source, fetch date, dataset, and regeneration script are included.
 - Generated track data is committed so runtime does not require network access.

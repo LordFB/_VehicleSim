@@ -20,6 +20,43 @@ export const CAMERA = {
   FOV_SPEED_GAIN: 3,
   FOV_SPEED_REF_MPS: 90,
   FOV_LERP: 0.08,
+  CHASE_YAW_LOOK_GAIN: 1.15,
+  CHASE_SIDESLIP_LOOK_GAIN: 2.6,
+  ONBOARD: {
+    FOV: 63,
+    NEAR: 0.025,
+    EYE_OFFSET: [0, 0.54, 0.56] as [number, number, number],
+    LOOK_OFFSET: [0, 0.42, 18] as [number, number, number],
+    WHEEL_OFFSET: [0, 0.22, 0.94] as [number, number, number],
+    POSITION_LERP: 0.48,
+    TARGET_LERP: 0.42,
+    FOV_LERP: 0.22,
+    SPEED_REF_MPS: 70,
+    SPEED_HEAVE: 0.025,
+    BRAKE_DIVE: 0.018,
+    SIDESLIP_HEAD_GAIN: 0.08,
+    YAW_HEAD_GAIN: 0.025,
+  },
+  NOSE: {
+    FOV: 60,
+    NEAR: 0.025,
+    EYE_OFFSET: [0, 0.1, 1.92] as [number, number, number],
+    LOOK_OFFSET: [0, 0.14, 22] as [number, number, number],
+    POSITION_LERP: 0.38,
+    TARGET_LERP: 0.36,
+    FOV_LERP: 0.18,
+  },
+};
+
+export const COCKPIT = {
+  WHEEL_STEER_RATIO: 5.2,
+  WHEEL_TILT_RAD: -0.42,
+  SHIFT_LED_COUNT: 9,
+  LED_RPM_START_FRAC: 0.72,
+};
+
+export const VEHICLE_VIEW = {
+  CHASSIS_ORIENTATION_LERP: 0.32,
 };
 
 // Warm golden-hour lighting rig (Forza Horizon identity).
@@ -197,7 +234,7 @@ export const SCENERY = {
   HILL_COLOR: 0x4a6a52, // hazy blue-green distance
   // Conifer forest of the royal park: scattered across the whole footprint, kept off
   // the racing surface (see Scenery.buildForest). Dense enough to fill infield + ring.
-  TREE_COUNT: 900,
+  TREE_COUNT: 2400,
   TREE_INNER_R: 34, // (legacy) unused by the footprint scatter
   TREE_OUTER_R: 90, // margin of forest beyond the circuit bounding box
   TREE_CENTER_Z: 14, // (legacy)
