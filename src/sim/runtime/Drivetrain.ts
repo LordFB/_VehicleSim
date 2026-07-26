@@ -138,8 +138,6 @@ export function solveDrivetrain(
   return {
     driveTorqueByWheel,
     rpm: state.rpm,
-    // Display gear: -1 → reverse, 0 → neutral, n → forward gear n. The HUD already maps
-    // <0 to "R" and 0 to "N".
     gear: state.gearIndex,
   };
 }

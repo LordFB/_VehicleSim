@@ -15,7 +15,7 @@ export class CameraController {
   private initialized = false;
   private currentFov = CAMERA.FOV;
   private currentNear = CAMERA.NEAR;
-  private mode: CameraMode = 'chase';
+  private mode: CameraMode = 'onboard';
 
   constructor(camera: THREE.PerspectiveCamera, onModeChanged: (mode: CameraMode) => void) {
     this.camera = camera;

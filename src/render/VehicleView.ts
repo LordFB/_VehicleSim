@@ -11,8 +11,8 @@ const WHEEL_IDS: WheelId[] = ['frontLeft', 'frontRight', 'rearLeft', 'rearRight'
  * nose and front wing sit at +Z) so it lines up with the wheel hardpoints in the
  * vehicle spec. Identity cues an F3 fan recognizes instantly: exposed wheels on
  * visible suspension arms, a low pointed nose feeding a full-width multi-element
- * front wing, sidepods, an airbox behind the driver, the halo over the cockpit,
- * and a high rear wing above a diffuser.
+ * front wing, sidepods, an airbox behind the driver, and a high rear wing above
+ * a diffuser.
  */
 export class VehicleView {
   readonly group = new THREE.Group();
@@ -35,7 +35,7 @@ export class VehicleView {
     const wing = this.mat(COLORS.CAR_WING, 0.5, 0.2, environment, 0.5);
     const accent = this.mat(COLORS.CAR_BODY_ACCENT, 0.35, 0.25, environment, 0.6);
     const accent2 = this.mat(COLORS.CAR_ACCENT_2, 0.4, 0.3, environment, 0.6);
-    const halo = this.mat(COLORS.CAR_HALO, 0.55, 0.6, environment, 0.5);
+    const suspension = this.mat(0x181b20, 0.48, 0.58, environment, 0.5);
     const driver = this.mat(COLORS.CAR_DRIVER, 0.6, 0.1, null, 0);
 
     this.buildFloor(wing);
@@ -44,14 +44,13 @@ export class VehicleView {
     this.buildSidepods(carbon, accent);
     this.buildCockpit(driver, carbon);
     this.buildAirbox(carbon, accent);
-    this.buildHalo(halo);
     this.buildRearWing(wing, accent);
 
     // Tiny aero pieces do not need individual shadow-map draws. The four tires
     // carry the contact shadow, while direct lighting still shapes the body.
 
     this.buildWheels(spec, environment);
-    this.buildSuspension(spec, halo);
+    this.buildSuspension(spec, suspension);
   }
 
   // ---- body construction -------------------------------------------------
@@ -141,28 +140,6 @@ export class VehicleView {
     this.chassis.add(hoop);
     // Intake snorkel mouth.
     this.box(accent, 0.16, 0.12, 0.06, 0, 0.3, 0.2);
-  }
-
-  private buildHalo(halo: THREE.Material): void {
-    // Halo: two side rails sweeping from behind the cockpit forward to a single
-    // central front pillar — the unmistakable modern single-seater cue.
-    const rail = new THREE.TorusGeometry(0.3, 0.028, 8, 16, Math.PI);
-    for (const side of [-1, 1]) {
-      const arc = new THREE.Mesh(rail, halo);
-      arc.position.set(side * 0.23, 0.16, 0.42);
-      arc.rotation.set(Math.PI / 2, 0, 0);
-      arc.scale.set(1, 1.5, 1);
-      this.chassis.add(arc);
-    }
-    this.disposables.push(rail);
-    // Front central pillar down to the chassis ahead of the cockpit.
-    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.34, 8), halo);
-    pillar.position.set(0, 0.24, 0.78);
-    pillar.rotation.x = 0.2;
-    this.chassis.add(pillar);
-    this.disposables.push(pillar.geometry);
-    // Top spar joining the two arcs over the driver.
-    this.box(halo, 0.05, 0.05, 0.7, 0, 0.42, 0.4);
   }
 
   private buildRearWing(wing: THREE.Material, accent: THREE.Material): void {

@@ -6,22 +6,9 @@ export const SIM = {
 };
 
 export const CAMERA = {
-  FOV: 54,
+  FOV: 63,
   NEAR: 0.05,
   FAR: 1200,
-  FOLLOW_DISTANCE: 6.8,
-  FOLLOW_HEIGHT: 2.35,
-  LOOK_AHEAD_DISTANCE: 15,
-  LOOK_AHEAD_SPEED_GAIN: 6,
-  LOOK_HEIGHT: 1.15,
-  LERP: 0.16,
-  TARGET_LERP: 0.22,
-  // Restrained speed FOV for racing distance judgment instead of arcade zoom.
-  FOV_SPEED_GAIN: 3,
-  FOV_SPEED_REF_MPS: 90,
-  FOV_LERP: 0.08,
-  CHASE_YAW_LOOK_GAIN: 1.15,
-  CHASE_SIDESLIP_LOOK_GAIN: 2.6,
   ONBOARD: {
     FOV: 63,
     NEAR: 0.025,
@@ -122,7 +109,6 @@ export const COLORS = {
   CAR_GLASS: 0x0a0f16,
   CAR_RIM: 0xc8cdd4, // machined alloy
   CAR_DISC: 0x2b2d31, // carbon brake disc
-  CAR_HALO: 0x16181d, // matte titanium halo
   CAR_WING: 0x15171c, // carbon aero surfaces
   CAR_DRIVER: 0x101216, // helmet / cockpit shadow
   WHEEL: 0x121316, // slick tyre
@@ -277,3 +263,21 @@ export const INPUT = {
   STICK_DEADZONE: 0.09,
   STEER_EXPO: 0.4, // 0 = linear, 1 = full cubic (finer control near center)
 };
+
+export const COMPETITION = {
+  API_PATH: '/api/leaderboard',
+  TRACK_ID: 'monza-gp',
+  TRACK_LABEL: 'Monza Grand Prix',
+  BUILD: 'v0.1',
+  RULESET: 'monza-gp-v1',
+  PLAYER_STORAGE_KEY: 'vehicle-sim:competition-player:v1',
+  PLAYER_NAME_MIN_LENGTH: 3,
+  PLAYER_NAME_MAX_LENGTH: 20,
+  MIN_LAP_MS: 60_000,
+  MAX_LAP_MS: 600_000,
+  DEFAULT_LIMIT: 25,
+  MAX_LIMIT: 100,
+  STORE_NAME: 'vehicle-sim-leaderboards',
+  RATE_WINDOW_SECONDS: 60,
+  RATE_WINDOW_LIMIT: 30,
+} as const;

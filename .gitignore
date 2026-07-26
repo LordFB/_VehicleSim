@@ -7,3 +7,5 @@ coverage/
 debug.log
 npm-debug.log*
 .env
+.tmp/
+.netlify/

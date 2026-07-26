@@ -10,16 +10,15 @@ describe('camera controller', () => {
     eventBus.clear();
   });
 
-  it('keeps chase camera at the exact external follow distance after car motion', () => {
+  it('starts onboard and cycles to nose without exposing chase', () => {
     const camera = new THREE.PerspectiveCamera(CAMERA.FOV, 16 / 9, CAMERA.NEAR, CAMERA.FAR);
     const controller = new CameraController(camera, () => undefined);
 
+    expect(controller.getMode()).toBe('onboard');
     controller.update(snapshot({ position: [0, 1, 0] }), 1 / 60);
-    controller.update(snapshot({ position: [0, 1, 120] }), 1 / 60);
-
-    const horizontalDistance = Math.hypot(camera.position.x - 0, camera.position.z - 120);
-    expect(horizontalDistance).toBeCloseTo(CAMERA.FOLLOW_DISTANCE, 4);
-    expect(camera.position.y).toBeCloseTo(1 + CAMERA.FOLLOW_HEIGHT, 4);
+    expect(camera.position.z).toBeCloseTo(CAMERA.ONBOARD.EYE_OFFSET[2], 4);
+    expect(controller.cycleMode()).toBe('nose');
+    expect(controller.cycleMode()).toBe('onboard');
     controller.dispose();
   });
 });

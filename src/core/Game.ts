@@ -211,8 +211,8 @@ export class Game {
 
   private createCamera(): THREE.PerspectiveCamera {
     const camera = new THREE.PerspectiveCamera(CAMERA.FOV, window.innerWidth / window.innerHeight, CAMERA.NEAR, CAMERA.FAR);
-    camera.position.set(0, CAMERA.FOLLOW_HEIGHT, -CAMERA.FOLLOW_DISTANCE);
-    camera.lookAt(0, 0.8, 0);
+    camera.position.set(...CAMERA.ONBOARD.EYE_OFFSET);
+    camera.lookAt(...CAMERA.ONBOARD.LOOK_OFFSET);
     return camera;
   }
 
@@ -383,6 +383,5 @@ export class Game {
 
 function cameraModeLabel(mode: CameraMode): string {
   if (mode === 'onboard') return 'Onboard';
-  if (mode === 'nose') return 'Nose';
-  return 'Chase';
+  return 'Nose';
 }

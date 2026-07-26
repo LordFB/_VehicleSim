@@ -8,6 +8,7 @@ import { SkidMarks } from '../render/SkidMarks';
 import { TireSmoke } from '../render/TireSmoke';
 import { EngineAudio } from '../audio/EngineAudio';
 import type { CarSetup } from '../game/CarSetup';
+import type { WheelTrackContact } from '../game/CompetitionLap';
 import type { CameraMode } from '../render/RaceCamera';
 import defaultVehicleJson from '../sim/data/defaultVehicle.json';
 import defaultWorldJson from '../sim/data/testWorld.json';
@@ -60,6 +61,8 @@ export type StandaloneCarState = {
   lateral: number;
   onTrack: boolean;
   surfaceName: string;
+  wheelContacts: WheelTrackContact[];
+  resetCount: number;
   hint: number;
   ai: false;
   mesh: THREE.Object3D;
@@ -169,7 +172,7 @@ export class MonzaVehicleSim {
   private readonly unsubs: Array<() => void> = [];
   private lastSnapshot: PhysicsSnapshot | null = null;
   private resetSeed = 100;
-  private cameraMode: CameraMode = 'chase';
+  private cameraMode: CameraMode = 'onboard';
   private vehicleVisible = true;
 
   constructor(
@@ -237,7 +240,7 @@ export class MonzaVehicleSim {
   }
 
   setCameraMode(mode: string): void {
-    this.cameraMode = mode === 'COCKPIT' ? 'onboard' : mode === 'NOSE' ? 'nose' : 'chase';
+    this.cameraMode = mode === 'NOSE' ? 'nose' : 'onboard';
     this.updateVehicleVisibility();
   }
 
@@ -256,6 +259,7 @@ export class MonzaVehicleSim {
 
   reset(): void {
     this.resetSeed += 1;
+    this.car.resetCount += 1;
     this.physics.reset(this.resetSeed);
     this.skidMarks.clear();
   }
@@ -309,12 +313,17 @@ export class MonzaVehicleSim {
       car.onTrack = Math.abs(nearest.lateral) <= nearest.halfWidth + 1.15;
       car.surfaceName = surfaceName(snapshot);
     }
+    car.wheelContacts = Object.values(snapshot.telemetry.wheels).map((wheel) => ({
+      contact: wheel.contact,
+      surfaceMaterialId: wheel.surfaceMaterialId,
+    }));
   }
 
   private updateVehicleVisibility(): void {
-    this.view.group.visible = this.vehicleVisible && this.cameraMode !== 'onboard';
+    this.view.group.visible = this.vehicleVisible && this.cameraMode === 'nose';
+    this.view.setCameraMode(this.cameraMode);
     this.cockpitView.setCameraMode(
-      this.vehicleVisible && this.cameraMode === 'onboard' ? 'onboard' : 'chase',
+      this.vehicleVisible && this.cameraMode === 'onboard' ? 'onboard' : 'nose',
     );
   }
 }
@@ -334,6 +343,11 @@ function createCarAdapter(reset: () => void): StandaloneCarState {
     lateral: 0,
     onTrack: true,
     surfaceName: 'track',
+    wheelContacts: Array.from({ length: 4 }, () => ({
+      contact: true,
+      surfaceMaterialId: 'asphalt_new' as const,
+    })),
+    resetCount: 0,
     hint: 0,
     ai: false,
     mesh: new THREE.Object3D(),

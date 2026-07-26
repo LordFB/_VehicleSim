@@ -16,5 +16,5 @@
     "noUnusedParameters": true,
     "allowSyntheticDefaultImports": true
   },
-  "include": ["src", "packages/**/*.ts", "tests", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"]
+  "include": ["src", "netlify/**/*.ts", "packages/**/*.ts", "tests", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"]
 }

@@ -34,6 +34,7 @@ User opens `/monza.html`, launches the F3 car with the Vehicle Sim controls, and
 ## Playtest refinement acceptance
 
 - [ ] Physical barriers occupy both visible track edges, remain continuous, and no longer produce one-sided or phantom impacts. — tests: `tests/unit/monzaVehicleSim.test.ts`, user playtest
-- [x] Chase view holds a fixed spatial distance and onboard view uses a rigid driver-eye pose, restrained 63° FOV, and dedicated cockpit geometry. — tests: `tests/unit/monzaStandaloneHtml.test.ts`, `tests/e2e/monza-standalone.spec.ts`
+- [ ] The chase camera is removed from the main and standalone camera cycles; onboard is the default driving view, with nose/broadcast alternatives retained. — tests: `tests/unit/raceCamera.test.ts`, `tests/unit/cameraController.test.ts`, `tests/unit/monzaStandaloneHtml.test.ts`, `tests/e2e/monza-standalone.spec.ts`
+- [ ] Onboard view uses a rigid driver-eye pose, restrained 63° FOV, and a dramatically richer halo-free cockpit with nose bodywork, front suspension/wheels, mirrors, dash controls, and a live steering display. — tests: `tests/unit/cockpitWheelView.test.ts`, visual inspection
 - [x] The shared car setup panel is available from Monza, applies physics, input, and transmission changes live, persists them, and resets to stock. — tests: `tests/unit/monzaVehicleSim.test.ts`, `tests/unit/monzaStandaloneHtml.test.ts`, `tests/e2e/monza-standalone.spec.ts`
 - [x] The vehicle and standalone render pass remove avoidable overlapping surfaces and stay within the integrated draw-call/performance budget. — tests: `tests/e2e/monza-standalone.spec.ts`, visual inspection

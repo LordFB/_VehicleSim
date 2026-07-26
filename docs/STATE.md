@@ -2,7 +2,7 @@
 
 ## Last updated
 
-2026-07-26 by Codex
+2026-07-27 by Codex
 
 ## Current phase
 
@@ -10,30 +10,32 @@ development
 
 ## Current milestone
 
-Milestone 006 - Vehicle Sim v0.1 on Standalone Monza (`docs/milestones/006-vehicle-sim-v0.1.md`)
+Milestone 008 - Netlify Leaderboards (`docs/milestones/008-netlify-leaderboards.md`)
 
 ## Last action
 
-Completed a v0.1 playtest-fidelity pass on standalone Monza. Fixed the barrier-side contract that put both physical guardrail rows on one side of the circuit; straight sections now use longer continuous collision chords while tight corners retain shorter, better-fitting chords.
+Implemented the deploy-ready Netlify leaderboard slice:
 
-Added the shared persistent `SetupModal` to Monza with live physics, input, assists, final-drive, and transmission application. `P` opens setup and the quick auto/manual button now persists into the same setup state.
+- persistent local player handles and an accessible in-game competition drawer;
+- ranked Monza standings with best-per-driver aggregation;
+- valid-lap-only submission wired to the competition lap state;
+- a same-origin Netlify Function backed by strongly consistent Netlify Blobs;
+- immutable unique lap records, server-generated identifiers/timestamps, payload validation, and edge rate limiting;
+- focused unit coverage, a production build, a Netlify function bundle, and an integrated Playwright browser check.
 
-The chase camera now uses a fixed 7.2 m offset with restrained speed FOV. Cockpit mode is rigid to the chassis at 63° and renders the dedicated live steering wheel, shift LEDs, coaming, and slimmed halo instead of the external car. Removed random onboard shake.
-
-Reduced full-resolution cost with a 1.5 DPR cap, 1024² shadow map, fewer collision boxes, fewer wheel meshes/segments, and no tiny aero shadow casters. Removed overlapping livery and concentric wheel surfaces that caused depth flicker. The F3 now has brighter painted sidepods/engine cover and realistic black slicks instead of tire-temperature blue.
-
-Verification passed: focused Vitest (11 tests), TypeScript and production build, all standalone Playwright checks including integrated draw-call budget, setup dialog, fixed chase distance, and driving. Visual captures: `output/iterate/2026-07-26-v0.1-fidelity-chase-final.png` and `output/iterate/2026-07-26-v0.1-fidelity-onboard-final.png`.
+The user confirmed the Milestone 007 competition-integrity playtest on 2026-07-27.
 
 ## Next step
 
-User playtest the corrected two-sided guardrail collisions and revised vehicle/camera feel. Open `/monza.html`, press `P` for setup, and tune or reset the car while driving.
+Link or deploy the site on Netlify, exercise `/api/leaderboard` against the hosted Blobs store, and complete the Milestone 008 production smoke test.
 
 ## Blockers
 
-`scripts/monza-verify.mjs` is still brittle when port 3000 is occupied: it lets Vite fall back to 3001 but waits on 3000. Use a fixed `--strictPort` Vite process for standalone Playwright checks.
-
-Existing unrelated full-suite issues from prior sessions may still remain: vehicle physics/diagnostic coverage failures in `tests/scenarios/thermalFade.test.ts`, `tests/scenarios/vehicleScenarios.test.ts`, `tests/unit/accelDiag.test.ts`, and `tests/unit/flipRepro.test.ts`.
+- A Netlify site link/deployment is required for the real hosted-store exit condition.
+- Submissions are labelled `client-integrity`; replay-grade authoritative lap evidence remains a future anti-cheat milestone.
+- The full unit suite passes 86 of 87 tests; the pre-existing `flipRepro` diagnostic exceeds its five-second timeout after producing its output.
+- `npm audit --omit=dev` reports three moderate advisories in the current Netlify Blobs telemetry dependency path, with no high or critical advisories.
 
 ## Notes for next session
 
-The integrated v0.1 experience is `/monza.html`; the original modular simulator remains at `/`, Nordschleife at `/?track=nordschleife`, and TrackPrint at `/track-editor`. Standalone controls: `W/S`, `A/D`, `E/Q`, `G`, `Space`, `C`, `R`, `L`, and `M`. The simulator starts in neutral/manual, so press `E` before throttle or switch automatic on.
+Deploy or link the repository to its intended Netlify site, then test player-name persistence, a clean-lap submission, standings refresh/reload, and an invalid reset-assisted lap against the real hosted service.

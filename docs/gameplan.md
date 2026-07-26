@@ -10,6 +10,7 @@ Vehicle Sim is a browser-based hardcore vehicle dynamics sandbox: one high-fidel
 2. Drive the car with keyboard or controller.
 3. Read HUD, lap timing, and telemetry.
 4. Tune setup values and repeat laps to understand handling changes.
+5. Run valid competition laps under race-control rules and compare them on an online leaderboard.
 
 ## Current Content
 
@@ -21,6 +22,8 @@ Vehicle Sim is a browser-based hardcore vehicle dynamics sandbox: one high-fidel
 - Vehicle physics, tire behavior, and surface feedback matter more than visual excess.
 - Rendering is a view of physics state, not the source of truth.
 - Tracks should be generated from committed, auditable data so tests and screenshots are deterministic.
+- Competition laps are invalid when all four wheels leave the legal racing surface or the car is reset/teleported.
+- Online standings must reject implausible or incomplete lap evidence rather than trusting a browser-supplied time.
 
 ## Anti-Goals
 

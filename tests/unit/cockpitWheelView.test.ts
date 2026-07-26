@@ -7,14 +7,33 @@ describe('cockpit wheel view', () => {
   it('is only visible in onboard camera mode', () => {
     const view = new CockpitWheelView();
 
-    view.setCameraMode('chase');
-    expect(view.group.visible).toBe(false);
-
     view.setCameraMode('onboard');
     expect(view.group.visible).toBe(true);
 
     view.setCameraMode('nose');
     expect(view.group.visible).toBe(false);
+    view.dispose();
+  });
+
+  it('builds a detailed halo-free onboard car around the driver', () => {
+    const view = new CockpitWheelView();
+    const names = new Set<string>();
+    view.group.traverse((object) => names.add(object.name));
+
+    for (const part of [
+      'cockpit-nose',
+      'cockpit-front-left-wheel',
+      'cockpit-front-right-wheel',
+      'cockpit-front-left-suspension',
+      'cockpit-front-right-suspension',
+      'cockpit-left-mirror',
+      'cockpit-right-mirror',
+      'cockpit-dashboard',
+      'cockpit-steering-wheel',
+    ]) {
+      expect(names.has(part), part).toBe(true);
+    }
+    expect([...names].some((name) => name.toLowerCase().includes('halo'))).toBe(false);
     view.dispose();
   });
 

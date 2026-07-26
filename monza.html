@@ -57,6 +57,9 @@
   #timing .row .v{font-family:var(--f-disp);font-size:17px;font-variant-numeric:tabular-nums}
   #lapBig{font-family:var(--f-disp);font-size:38px;font-weight:600;font-variant-numeric:tabular-nums;line-height:.9}
   #lapDelta{font-size:13px;font-family:var(--f-disp);letter-spacing:.03em}
+  #lapStatus{display:inline-flex;margin:7px 0 2px;padding:3px 7px;border:1px solid #2e6f50;
+    color:#39d353;font-size:9px;letter-spacing:.18em;text-transform:uppercase}
+  #lapStatus.invalid{border-color:var(--rosso);background:rgba(225,6,0,.12);color:#ff6b66}
   .faster{color:#39d353}.slower{color:var(--rosso)}
   #sectors{display:flex;gap:4px;margin-top:9px}
   #sectors b{flex:1;height:4px;background:var(--line);display:block}
@@ -168,11 +171,12 @@
     <div class="lbl">Current lap</div>
     <div id="lapBig">0:00.000</div>
     <div id="lapDelta">&nbsp;</div>
+    <div id="lapStatus">Valid lap</div>
     <div id="sectors"><b id="s1"></b><b id="s2"></b><b id="s3"></b></div>
     <div class="row"><span class="lbl">Best</span><span class="v" id="tBest">—:—.—</span></div>
     <div class="row"><span class="lbl">Last</span><span class="v" id="tLast">—:—.—</span></div>
     <div class="row"><span class="lbl">Lap</span><span class="v" id="tLapNo">1</span></div>
-    <div class="row"><span class="lbl">Camera</span><span class="v" id="tCam">CHASE</span></div>
+    <div class="row"><span class="lbl">Camera</span><span class="v" id="tCam">COCKPIT</span></div>
   </div>
 </div>
 
@@ -232,6 +236,8 @@ import * as THREE from 'three';
 import { MonzaVehicleSim } from '/src/standalone/MonzaVehicleSim.ts';
 import { SetupModal } from '/src/ui/SetupModal.ts';
 import { saveCarSetup } from '/src/game/CarSetup.ts';
+import { CompetitionLapController } from '/src/game/CompetitionLap.ts';
+import { CompetitionPanel } from '/src/ui/CompetitionPanel.ts';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    AUTODROMO NAZIONALE DI MONZA — track module
@@ -2382,10 +2388,6 @@ function makeCarModel() {
   // engine cover + airbox
   add(new THREE.BoxGeometry(0.62, 0.5, 1.7), rosso, 0, 0.72, -1.2);
   add(new THREE.CylinderGeometry(0.2, 0.26, 0.42, 10), dark, 0, 0.98, -0.35, Math.PI / 14);
-  // halo
-  const halo = new THREE.TorusGeometry(0.42, 0.045, 8, 22, Math.PI);
-  add(halo, chrome, 0, 0.92, 0.08, 0, 0, 0);
-  add(new THREE.BoxGeometry(0.07, 0.07, 0.5), chrome, 0, 0.94, 0.5);
   // cockpit opening
   add(new THREE.BoxGeometry(0.52, 0.1, 0.9), dark, 0, 0.68, 0.25);
   // helmet
@@ -2650,9 +2652,7 @@ class RaceCar {
 /* ═══════════════════════════════════════════════════════════════════════════
    CAMERA RIG
    ═══════════════════════════════════════════════════════════════════════════ */
-const CAM_MODES = ['CHASE', 'COCKPIT', 'NOSE', 'TV', 'HELICOPTER', 'ORBIT'];
-const CHASE_DISTANCE = 7.2;
-const CHASE_HEIGHT = 2.35;
+const CAM_MODES = ['COCKPIT', 'NOSE', 'TV', 'HELICOPTER', 'ORBIT'];
 
 class CameraRig {
   constructor(camera, cl, surf) {
@@ -2697,22 +2697,10 @@ class CameraRig {
     const speedT = clamp(car.speed / CAR.V_MAX, 0, 1);
 
     switch (CAM_MODES[this.mode]) {
-      case 'CHASE': {
-        this._tmp.set(
-          car.pos.x - fx * CHASE_DISTANCE,
-          car.pos.y + CHASE_HEIGHT,
-          car.pos.z - fz * CHASE_DISTANCE,
-        );
-        this.pos.lerp(this._tmp, approach(11, dt));
-        this._tmp.set(car.pos.x + fx * 13, car.pos.y + 1.05, car.pos.z + fz * 13);
-        this.look.lerp(this._tmp, approach(12, dt));
-        this.cam.fov = lerp(this.cam.fov, 56 + speedT * 2.5, k);
-        break;
-      }
       case 'COCKPIT': {
         const m = car.mesh;
         // Driver-eye camera is rigid to the chassis; the separate cockpit view
-        // supplies the coaming, halo and live steering wheel.
+        // supplies the bodywork, suspension, mirrors and live steering wheel.
         this._tmp.set(0, 0.54, 0.2).applyQuaternion(m.quaternion).add(car.pos);
         this.pos.copy(this._tmp);
         this._tmp.set(0, 0.42, 18).applyQuaternion(m.quaternion).add(car.pos);
@@ -2784,15 +2772,16 @@ class HUD {
       rpm: document.getElementById('rpm'), lapBig: document.getElementById('lapBig'),
       delta: document.getElementById('lapDelta'), best: document.getElementById('tBest'),
       last: document.getElementById('tLast'), lapNo: document.getElementById('tLapNo'),
+      status: document.getElementById('lapStatus'),
       cam: document.getElementById('tCam'), corner: document.getElementById('corner'),
       len: document.getElementById('fLen'), mapPct: document.getElementById('mapPct'),
       mapMode: document.getElementById('mapMode'), toast: document.getElementById('toast'),
       sectors: [document.getElementById('s1'), document.getElementById('s2'), document.getElementById('s3')],
     };
     this.el.len.textContent = (cl.length / 1000).toFixed(3) + ' km';
-    this.lap = 1; this.lapStart = performance.now();
-    this.best = null; this.last = null; this.sector = 0;
-    this.bestSectors = [null, null, null]; this.sectorStart = this.lapStart;
+    this.competition = new CompetitionLapController(cl.length, 12000, performance.now());
+    this.resetCount = 0; this.sector = 0;
+    this.bestSectors = [null, null, null]; this.sectorStart = performance.now();
     this._buildMap();
     EventBus.on('camera:changed', d => this.el.cam.textContent = d.mode);
   }
@@ -2882,23 +2871,28 @@ class HUD {
   timing(car, now) {
     const L = this.cl.length;
     const s = car.distance;
-    if (this._prevS === undefined) this._prevS = s;
-    // crossing the line: distance wraps from near L back to near 0
-    if (this._prevS > L * 0.82 && s < L * 0.18) {
-      const lapMs = now - this.lapStart;
-      if (lapMs > 12000) {                    // ignore spurious wraps
-        this.last = lapMs;
-        const improved = this.best === null || lapMs < this.best;
-        if (improved) this.best = lapMs;
-        this.el.last.textContent = fmtTime(this.last);
-        this.el.best.textContent = fmtTime(this.best);
-        this.el.last.className = 'v' + (improved ? ' faster' : '');
-        this.toast(improved ? 'Personal best  ' + fmtTime(lapMs) : 'Lap ' + fmtTime(lapMs), 2200);
-        EventBus.emit('lap:complete', { lap: this.lap, ms: lapMs, best: improved });
-        this.lap++;
-        this.el.lapNo.textContent = this.lap;
-      }
-      this.lapStart = now; this.sector = 0; this.sectorStart = now;
+    const wasValid = this.competition.snapshot().valid;
+    if (car.resetCount !== this.resetCount) {
+      this.resetCount = car.resetCount;
+      this.competition.invalidate('reset');
+    }
+    const state = this.competition.update(s, now, car.wheelContacts);
+
+    if (wasValid && !state.valid) {
+      this.toast(state.invalidReason === 'reset' ? 'Lap invalid · car reset' : 'Lap invalid · four wheels off', 2200);
+    }
+    if (state.justCompleted) {
+      const improved = state.bestMs === state.lastMs;
+      this.el.last.textContent = fmtTime(state.lastMs);
+      this.el.best.textContent = fmtTime(state.bestMs);
+      this.el.last.className = 'v' + (improved ? ' faster' : '');
+      this.toast(improved ? 'Personal best  ' + fmtTime(state.lastMs) : 'Lap ' + fmtTime(state.lastMs), 2200);
+      EventBus.emit('lap:complete', { lap: state.lapNumber - 1, ms: state.lastMs, best: improved });
+    } else if (state.justDiscarded) {
+      this.toast('Invalid lap discarded', 2200);
+    }
+    if (state.justCompleted || state.justDiscarded) {
+      this.sector = 0; this.sectorStart = now;
       this.el.sectors.forEach(b => b.className = '');
     }
     // sector boundaries
@@ -2910,17 +2904,23 @@ class HUD {
       this.el.sectors[this.sector].className = pb ? 'pb' : 'on';
       this.sector++; this.sectorStart = now;
     }
-    this._prevS = s;
-
-    const cur = now - this.lapStart;
-    this.el.lapBig.textContent = fmtTime(cur);
-    if (this.best) {
+    this.el.lapNo.textContent = state.lapNumber;
+    this.el.lapBig.textContent = fmtTime(state.currentMs);
+    this.el.status.textContent = state.valid
+      ? 'Valid lap'
+      : state.invalidReason === 'reset' ? 'Invalid · reset' : 'Invalid · four wheels off';
+    this.el.status.className = state.valid ? '' : 'invalid';
+    if (state.bestMs) {
       // rough delta: compare elapsed against the same fraction of the best lap
       const frac = s / L;
-      const d = cur - this.best * frac;
+      const d = state.currentMs - state.bestMs * frac;
       this.el.delta.textContent = (d >= 0 ? '+' : '\u2212') + Math.abs(d / 1000).toFixed(2);
       this.el.delta.className = d < 0 ? 'faster' : 'slower';
     }
+  }
+
+  competitionState() {
+    return this.competition.snapshot();
   }
 
   update(car, surf, now) {
@@ -3202,16 +3202,17 @@ async function initDemo() {
     sim.applySetup(setup);
     document.getElementById('bAI').textContent = 'Auto: ' + (sim.isAutoShift() ? 'on' : 'off');
   });
+  const competitionPanel = new CompetitionPanel(document.body);
   document.getElementById('bAI').textContent = 'Auto: ' + (sim.isAutoShift() ? 'on' : 'off');
 
-  window.MONZA = { track, sim, car, rig, hud, setupModal, scene, renderer, camera, GameState, EventBus };
+  window.MONZA = { track, sim, car, rig, hud, setupModal, competitionPanel, scene, renderer, camera, GameState, EventBus };
 
   // ── input ──
   const keys = {};
   addEventListener('keydown', e => {
     keys[e.code] = true;
     if (e.code === 'KeyC') hud.toast('Camera: ' + rig.cycle(), 1100);
-    if (e.code === 'KeyR') { car.resetTo(car.distance - 40); hud.toast('Reset to track', 900); }
+    if (e.code === 'KeyR') hud.toast('Reset to track · lap invalid', 1100);
     if (e.code === 'KeyL') {
       GameState.flags.showLine = !GameState.flags.showLine;
       track.showRacingLine(GameState.flags.showLine);
@@ -3266,6 +3267,9 @@ async function initDemo() {
   };
 
   EventBus.on('car:contact', () => hud.toast('Contact!', 700));
+  EventBus.on('lap:complete', () => {
+    void competitionPanel.submitCompletedLap(hud.competitionState());
+  });
 
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
@@ -3325,6 +3329,8 @@ async function initDemo() {
       surface: car.surfaceName || 'track',
       ai: car.ai,
     },
+    competition: hud.competitionState(),
+    leaderboard: competitionPanel.snapshot(),
     camera: CAM_MODES[rig.mode],
     quality: track.qualityMetrics(),
     referenceDetails: track.referenceDetails(),
