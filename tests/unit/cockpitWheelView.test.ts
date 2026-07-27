@@ -46,7 +46,9 @@ describe('cockpit wheel view', () => {
     expect(view.group.position.x).toBe(3);
     expect(view.group.position.y).toBe(1);
     expect(view.group.position.z).toBe(7);
-    expect(view.steeringWheel.rotation.z).toBeCloseTo(-steeringAngleRad * COCKPIT.WHEEL_STEER_RATIO, 4);
+    // The rim spins inside the mount, which holds the fixed column rake.
+    expect(view.steeringRotationRad).toBeCloseTo(-steeringAngleRad * COCKPIT.WHEEL_STEER_RATIO, 4);
+    expect(view.steeringWheel.rotation.x).toBeCloseTo(COCKPIT.WHEEL_TILT_RAD, 4);
     expect(view.steeringWheel.position.y).toBeCloseTo(CAMERA.ONBOARD.WHEEL_OFFSET[1], 4);
     view.dispose();
   });

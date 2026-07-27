@@ -68,11 +68,7 @@
 
   /* ── speed cluster ───────────────────────────────────────── */
   #cluster{bottom:0;left:50%;transform:translateX(-50%);width:352px}
-  #cluster .body{padding:9px 18px 13px;display:flex;align-items:flex-end;gap:18px}
-  #spd{font-size:62px;font-weight:700}
-  #spdUnit{font-size:11px;letter-spacing:.2em;color:var(--dim);margin-bottom:9px}
-  #gear{font-family:var(--f-disp);font-size:44px;font-weight:700;color:var(--rosso);margin-left:auto;line-height:.85}
-  #rpmWrap{height:7px;background:#0a0c0f;border:1px solid var(--line);margin:0 18px 11px;position:relative;overflow:hidden}
+  #rpmWrap{height:7px;background:#0a0c0f;border:1px solid var(--line);margin:0 18px 13px;position:relative;overflow:hidden}
   #rpm{height:100%;width:0%;background:linear-gradient(90deg,var(--verde),var(--gold) 62%,var(--rosso) 88%);transition:width .05s linear}
   #rpmWrap::after{content:'';position:absolute;inset:0;left:88%;background:rgba(225,6,0,.22)}
   #corner{text-align:center;font-family:var(--f-disp);font-size:15px;letter-spacing:.13em;
@@ -142,7 +138,7 @@
   @media (max-width:880px){
     #title{width:250px}#title h1{font-size:19px}#title .facts .num{font-size:16px}
     #timing{width:172px}#lapBig{font-size:29px}
-    #cluster{width:290px}#spd{font-size:47px}#gear{font-size:34px}
+    #cluster{width:290px}
     #mapWrap{width:150px}#help{display:none}
   }
 </style>
@@ -184,11 +180,8 @@
   <div class="tricolore"><i></i><i></i><i></i></div>
   <div id="corner">&nbsp;</div>
   <div id="rpmWrap"><div id="rpm"></div></div>
-  <div class="body">
-    <div><div class="num" id="spd">0</div></div>
-    <div id="spdUnit">km/h</div>
-    <div id="gear">N</div>
-  </div>
+  <!-- Speed and gear now live on the steering wheel's screen (CockpitWheelView),
+       so the HTML cluster keeps only the corner name and the rev bar. -->
 </div>
 
 <div class="hud card" id="mapWrap">
@@ -2768,7 +2761,6 @@ class HUD {
   constructor(cl, line) {
     this.cl = cl; this.line = line;
     this.el = {
-      spd: document.getElementById('spd'), gear: document.getElementById('gear'),
       rpm: document.getElementById('rpm'), lapBig: document.getElementById('lapBig'),
       delta: document.getElementById('lapDelta'), best: document.getElementById('tBest'),
       last: document.getElementById('tLast'), lapNo: document.getElementById('tLapNo'),
@@ -2924,9 +2916,8 @@ class HUD {
   }
 
   update(car, surf, now) {
-    this.el.spd.textContent = Math.round(car.kmh);
-    const g = car.gear;
-    this.el.gear.textContent = g === 0 ? 'N' : g;
+    // Speed and gear are rendered on the steering wheel's screen now; these
+    // elements no longer exist in the cluster.
     this.el.rpm.style.width = (car.rpmFrac * 100).toFixed(1) + '%';
     this.timing(car, now);
     this.drawMap(car);
@@ -3157,8 +3148,10 @@ async function initDemo() {
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0xbccbd6, 900, 3600);
 
+  // Near plane must sit closer than the steering wheel (~0.6m ahead of the eye
+  // in COCKPIT), otherwise the rim is sliced off by the frustum. 0.35 cut it.
   const camera = new THREE.PerspectiveCamera(GameState.settings.fov, innerWidth / innerHeight,
-                                             0.35, GameState.settings.renderDistance);
+                                             0.02, GameState.settings.renderDistance);
 
   // ── light: high summer afternoon sun over the Lombardy plain ──
   const sunDir = new THREE.Vector3(-0.42, 0.78, 0.46).normalize();

@@ -240,7 +240,11 @@ export class MonzaVehicleSim {
   }
 
   setCameraMode(mode: string): void {
-    this.cameraMode = mode === 'NOSE' ? 'nose' : 'onboard';
+    // Every camera except COCKPIT looks at the car from outside, so it must show
+    // the bodywork and hide the cockpit-interior view. Matching only 'NOSE' here
+    // left TV / HELICOPTER / ORBIT falling through to the onboard branch, which
+    // rendered the steering wheel and dashboard floating in mid-air with no car.
+    this.cameraMode = mode === 'COCKPIT' ? 'onboard' : 'nose';
     this.updateVehicleVisibility();
   }
 

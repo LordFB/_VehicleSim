@@ -14,7 +14,10 @@ export const CAMERA = {
     NEAR: 0.025,
     EYE_OFFSET: [0, 0.54, 0.56] as [number, number, number],
     LOOK_OFFSET: [0, 0.42, 18] as [number, number, number],
-    WHEEL_OFFSET: [0, 0.22, 0.94] as [number, number, number],
+    // Roughly arm's length ahead of, and just below, the driver's eye (which the
+    // monza rig places at y=0.54, z=0.2). Sitting it much lower or further
+    // forward drops the wheel behind the bottom HUD strip.
+    WHEEL_OFFSET: [0, 0.38, 0.6] as [number, number, number],
     POSITION_LERP: 0.48,
     TARGET_LERP: 0.42,
     FOV_LERP: 0.22,
@@ -36,7 +39,11 @@ export const CAMERA = {
 };
 
 export const COCKPIT = {
-  WHEEL_STEER_RATIO: 5.2,
+  // Rim rotation per radian of road steer. The vehicle's maxAngleRad is 0.42, so
+  // this gives roughly +/-50 degrees of rim travel — the lock a real formula wheel
+  // has. At 5.2 the rim swung ~125 degrees each way and clipped through the dash
+  // and monocoque shoulders.
+  WHEEL_STEER_RATIO: 2.1,
   WHEEL_TILT_RAD: -0.42,
   SHIFT_LED_COUNT: 9,
   LED_RPM_START_FRAC: 0.72,
