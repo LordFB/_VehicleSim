@@ -17,6 +17,14 @@ type QualityMetrics = {
   degenerateRoadTriangles: number;
 };
 
+type EnvironmentMetrics = {
+  layoutAuthority: string;
+  detailMappedMaterials: number;
+  vegetationInstances: number;
+  groundCoverInstances: number;
+  vegetationLayers: string[];
+};
+
 async function openStandaloneMonza(page: Page) {
   const threeResponse = await page.request.get('/node_modules/three/build/three.module.js');
   expect(threeResponse.ok()).toBe(true);
@@ -67,23 +75,35 @@ test('standalone Monza renders its reference-driven detail pass', async ({ page 
   const details = await page.evaluate(() => {
     const monza = (window as unknown as {
       MONZA: {
-        track: { referenceDetails: () => string[] };
+        track: {
+          referenceDetails: () => string[];
+          environmentMetrics: () => EnvironmentMetrics;
+        };
         sim: { setVehicleVisible: (visible: boolean) => void };
-        scene: { children: unknown[] };
+        scene: { children: unknown[]; environment: unknown };
         camera: unknown;
         renderer: {
           render: (scene: unknown, camera: unknown) => void;
-          info: { render: { calls: number }; memory: { geometries: number; textures: number } };
+          shadowMap: { type: number };
+          info: {
+            render: { calls: number; triangles: number };
+            memory: { geometries: number; textures: number };
+          };
         };
       };
     }).MONZA;
     monza.renderer.render(monza.scene, monza.camera);
     const fullCalls = monza.renderer.info.render.calls;
+    const fullTriangles = monza.renderer.info.render.triangles;
     monza.sim.setVehicleVisible(false);
     monza.renderer.render(monza.scene, monza.camera);
     const result = {
       names: monza.track.referenceDetails(),
+      environment: monza.track.environmentMetrics(),
+      hasEnvironmentLight: Boolean(monza.scene.environment),
+      shadowType: monza.renderer.shadowMap.type,
       fullCalls,
+      fullTriangles,
       calls: monza.renderer.info.render.calls,
       geometries: monza.renderer.info.memory.geometries,
       textures: monza.renderer.info.memory.textures,
@@ -102,8 +122,20 @@ test('standalone Monza renders its reference-driven detail pass', async ({ page 
     'suspended-podium',
     'historic-banking',
   ]));
+  expect(details.environment.layoutAuthority).toBe('current-2026');
+  expect(details.environment.detailMappedMaterials).toBeGreaterThanOrEqual(8);
+  expect(details.environment.vegetationInstances).toBeGreaterThanOrEqual(2_500);
+  expect(details.environment.groundCoverInstances).toBeGreaterThanOrEqual(500);
+  expect(details.environment.vegetationLayers).toEqual(expect.arrayContaining([
+    'ParcoBroadleafForest',
+    'ParcoCanopyAccents',
+    'ParcoGroundCover',
+  ]));
+  expect(details.hasEnvironmentLight).toBe(true);
+  expect(details.shadowType).toBe(1);
   expect(details.calls).toBeLessThan(260);
   expect(details.fullCalls).toBeLessThan(310);
+  expect(details.fullTriangles).toBeLessThan(500_000);
   expect(details.geometries).toBeLessThan(220);
   expect(details.textures).toBeLessThan(80);
   expect(errors).toEqual([]);

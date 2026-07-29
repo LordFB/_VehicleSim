@@ -42,6 +42,21 @@ describe('standalone Monza quality contract', () => {
     }
   });
 
+  it('layers current-2026-layout environmental fidelity without changing circuit authority', () => {
+    expect(html).toContain('environmentMetrics()');
+    expect(html).toContain('makeSurfaceDetailMaps');
+    expect(html).toContain('roughnessMap:');
+    expect(html).toContain('bumpMap:');
+    expect(html).toContain("g.name = 'ParcoGroundCover'");
+    expect(html).toContain("accentGroup.name = 'ParcoCanopyAccents'");
+    expect(html).toContain('THREE.PCFShadowMap');
+    expect(html).toContain('sun.shadow.radius');
+    expect(html).toContain('scene.environment =');
+    expect(html).toContain('shadowProfile:');
+    expect(html).toContain('layoutAuthority:');
+    expect(html).toContain("'current-2026'");
+  });
+
   it('boots the Vehicle Sim v0.1 runtime instead of the arcade RaceCar', () => {
     expect(html).toContain("import { MonzaVehicleSim } from '/src/standalone/MonzaVehicleSim.ts'");
     expect(html).toContain('new MonzaVehicleSim(');

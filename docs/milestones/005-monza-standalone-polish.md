@@ -14,6 +14,7 @@ Turn `monza.html` into a smooth, reference-driven modern Monza showcase while pr
 - Smooth render tangents and crossfall, fade road camber outside the kerbs, and taper surface-width changes.
 - Use continuous segment projection and a shared height query for the car, terrain, trees, and trackside objects.
 - Refine asphalt, tricolore kerbs, runoff, barriers, fencing, broadleaf woodland, pit straight, old banking, and permanent Monza landmarks from current references.
+- Raise the driver-height presentation to at least a polished mid-2010s racing-game baseline with layered procedural material response, multi-scale parkland vegetation, image-based daylight, soft local shadows, and more articulated permanent structures.
 - Add a standalone browser quality probe and visual smoke coverage.
 
 ## Out of scope
@@ -21,6 +22,7 @@ Turn `monza.html` into a smooth, reference-driven modern Monza showcase while pr
 - Replacing the arcade demo car with the main Vehicle Sim physics runtime.
 - Importing third-party circuit meshes, sponsor art, or copyrighted game assets.
 - Changing the surveyed X/Z centreline footprint or official lap length.
+- Reverting the circuit to a historical layout or removing the current 2026 layout, surface, and infrastructure baseline.
 
 ## Dependencies
 
@@ -34,6 +36,8 @@ Turn `monza.html` into a smooth, reference-driven modern Monza showcase while pr
 - [ ] Terrain no longer contains branch-switch cliffs and trees use the same terrain-height query as their bases. — test: `tests/e2e/monza-standalone.spec.ts::standalone Monza geometry quality stays within smoothness budgets`
 - [ ] The page renders without console errors and includes modern Monza surface treatment, varied safety infrastructure, broadleaf parkland, pit/start detail, and preserved old-banking landmarks. — test: `tests/e2e/monza-standalone.spec.ts::standalone Monza renders its reference-driven detail pass`
 - [ ] Chase/onboard driving through Rettifilo, Roggia, Lesmo, Serraglio, Ascari, and Alboreto reads as smooth and recognizably Monza. — verified by user playtest
+
+- [ ] The current-2026-layout environment exposes at least eight visibly used detail-mapped materials, layered canopy and understory vegetation, image-based daylight, and soft localized shadows while remaining below 260 environment calls, 310 full-scene calls, 220 geometries, 80 textures, and 500k E2E triangles. - tests: `tests/unit/monzaStandaloneHtml.test.ts::layers current-2026-layout environmental fidelity without changing circuit authority`; `tests/e2e/monza-standalone.spec.ts::standalone Monza renders its reference-driven detail pass`
 
 ## Exit condition
 

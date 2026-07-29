@@ -21,9 +21,9 @@ export class SkyAtmosphere {
   /** Unit world-space direction FROM the scene TO the sun. */
   readonly sunDirection = new THREE.Vector3();
   private pmrem: THREE.PMREMGenerator | null = null;
-  private envTexture: THREE.Texture | null = null;
+  private envTarget: THREE.WebGLRenderTarget | null = null;
 
-  constructor() {
+  constructor(sunDirection?: THREE.Vector3) {
     this.mesh = new Sky();
     // Sky's box is unit-sized; scale it past the far plane so it always frames
     // the scene. depthWrite is off in the shader, so it never occludes geometry.
@@ -56,7 +56,7 @@ export class SkyAtmosphere {
     // Derive the sun direction from the same vector the key light already uses,
     // so the brightest point of the sky sits exactly where the shadows come from.
     const sun = LIGHTING.SUN_POSITION;
-    this.sunDirection.set(sun.x, sun.y, sun.z).normalize();
+    this.sunDirection.copy(sunDirection ?? new THREE.Vector3(sun.x, sun.y, sun.z)).normalize();
     uniforms.sunPosition.value.copy(this.sunDirection);
   }
 
@@ -65,6 +65,8 @@ export class SkyAtmosphere {
    * and reflections. Renders the Sky into a throwaway scene at PMREM resolution.
    */
   buildEnvironment(renderer: THREE.WebGLRenderer): THREE.Texture {
+    this.envTarget?.dispose();
+    this.pmrem?.dispose();
     this.pmrem = new THREE.PMREMGenerator(renderer);
     // PMREM precompiles the equirect shader so the first fromScene call isn't
     // doing a cold shader compile under the render budget.
@@ -76,10 +78,10 @@ export class SkyAtmosphere {
     const previousScale = this.mesh.scale.x;
     this.mesh.scale.setScalar(1);
     scene.add(this.mesh);
-    this.envTexture = this.pmrem.fromScene(scene, 0.04).texture;
+    this.envTarget = this.pmrem.fromScene(scene, 0.04);
     scene.remove(this.mesh);
     this.mesh.scale.setScalar(previousScale);
-    return this.envTexture;
+    return this.envTarget.texture;
   }
 
   /** Approximate horizon colour in the sun's azimuth, for fog tinting. */
@@ -90,7 +92,7 @@ export class SkyAtmosphere {
   dispose(): void {
     this.mesh.geometry.dispose();
     (this.mesh.material as THREE.Material).dispose();
-    this.envTexture?.dispose();
+    this.envTarget?.dispose();
     this.pmrem?.dispose();
   }
 }
