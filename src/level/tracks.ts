@@ -1,7 +1,7 @@
 import monzaFeatures from './monzaFeatures.json';
 import { buildMonzaWorld, monzaCheckpoints, monzaTrackPath } from './MonzaWorld';
 import { centerlineBounds, centerlineLength, TRACK_HALF_WIDTH } from './MonzaTrack';
-import { buildMonzaDetail } from './MonzaDetail';
+import { buildMonzaDetail, monzaCornerMeshSurface } from './MonzaDetail';
 import { monzaElevationAtRealS, normalFromGrade } from './MonzaElevation';
 import { buildNordschleifeTrack } from './NordschleifeWorld';
 import {
@@ -59,9 +59,11 @@ export function buildMonzaTrack(): TrackDefinition {
   });
   const bounds = centerlineBounds(monza.centerline);
   const spawn = { position: [0, line[0].elevation + 0.72, 0] as [number, number, number], yawRad: 0 };
+  const monzaDetail = buildMonzaDetail(line);
   const world = {
     ...monza.world,
     barriers: elevateBarriers(monza.world.barriers, line),
+    meshSurface: monzaCornerMeshSurface(monzaDetail.surfaceAreas),
     spawn,
     terrainTrack: {
       samples: line,
@@ -82,7 +84,7 @@ export function buildMonzaTrack(): TrackDefinition {
     features: {
       banking: monzaFeatures.banking as unknown as BankingSpec,
       forests: monzaFeatures.forests,
-      monzaDetail: buildMonzaDetail(line),
+      monzaDetail,
     },
     metadata: {
       realLengthMeters: centerlineLength(monza.centerline) / 0.5,

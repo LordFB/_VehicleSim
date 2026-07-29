@@ -1,0 +1,30 @@
+
+> vehicle-sim-vertical-slice@0.1.0 dev
+> vite --host
+
+Port 3000 is in use, trying another one...
+[2m23:41:09[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m Re-optimizing dependencies because vite config has changed
+
+  [32m[1mVITE[22m v8.0.16[39m  [2mready in [0m[1m666[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m3001[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://10.5.0.2:[1m3001[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.178.132:[1m3001[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.56.1:[1m3001[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://172.18.0.1:[1m3001[22m/[39m
+[2m23:44:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmonza.html[22m
+[2m23:47:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmonza.html[22m
+[2m23:54:12[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmonza.html[22m
+[2m23:56:05[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmonza.html[22m
+[2m00:05:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmonza.html[22m
+[2m18:39:48[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmonza.html[22m
+[2m19:22:16[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmonza.html[22m
+[2m19:22:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmonza.html[22m
+[2m19:22:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmonza.html[22m
+[2m19:22:59[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmonza.html[22m
+[2m20:19:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmonza.html[22m
+[2m20:21:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmonza.html[22m
+[2m20:25:41[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmonza.html[22m
+[2m20:26:51[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmonza.html[22m
+[2m21:57:30[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mmonza.html[22m
+[2m17:22:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/standalone/MonzaVehicleSim.ts[22m

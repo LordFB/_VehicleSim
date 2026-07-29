@@ -29,6 +29,7 @@ async function openStandaloneMonza(page: Page) {
     });
   });
   await page.goto('/monza.html?e2e=1');
+  await page.getByRole('button', { name: 'Time Trial' }).click();
   await page.waitForFunction(
     () => Boolean((window as unknown as { MONZA?: { GameState?: { flags?: { ready?: boolean } } } }).MONZA?.GameState?.flags?.ready),
     null,
@@ -116,6 +117,68 @@ test('standalone Monza renders its reference-driven detail pass', async ({ page 
   await expect(canvas).toBeVisible();
   const png = await canvas.screenshot();
   expect(png.byteLength).toBeGreaterThan(80_000);
+});
+
+test('standalone Monza uses optimized boundary chords without blocking Rettifilo', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  await openStandaloneMonza(page);
+  const result = await page.evaluate(() => {
+    const monza = (window as unknown as {
+      MONZA: {
+        sim: {
+          world: {
+            barriers: Array<{
+              id: string;
+              center: [number, number, number];
+              halfExtents: [number, number, number];
+              yawRad?: number;
+            }>;
+            meshSurface?: { layers: Array<{ id: string; positions: number[] }> };
+          };
+        };
+        track: { cl: { count: number } };
+      };
+    }).MONZA;
+    const barriers = monza.sim.world.barriers;
+    const escape = monza.sim.world.meshSurface?.layers
+      .find((layer) => layer.id === 'rettifilo-straight-escape');
+    const escapeCenters: Array<[number, number]> = [];
+    if (escape) {
+      for (let index = 0; index < escape.positions.length; index += 6) {
+        escapeCenters.push([
+          (escape.positions[index] + escape.positions[index + 3]) * 0.5,
+          (escape.positions[index + 2] + escape.positions[index + 5]) * 0.5,
+        ]);
+      }
+    }
+    const blocking = barriers.filter((barrier) => escapeCenters.some(([x, z]) => {
+      const dx = x - barrier.center[0];
+      const dz = z - barrier.center[2];
+      const yaw = barrier.yawRad ?? 0;
+      const localX = dx * Math.cos(yaw) - dz * Math.sin(yaw);
+      const localZ = dx * Math.sin(yaw) + dz * Math.cos(yaw);
+      return Math.abs(localX) <= barrier.halfExtents[0] + 0.5
+        && Math.abs(localZ) <= barrier.halfExtents[2] + 0.5;
+    }));
+    return {
+      state: JSON.parse((window as unknown as { render_game_to_text: () => string }).render_game_to_text()),
+      count: barriers.length,
+      centerlineCount: monza.track.cl.count,
+      maxHalfLength: Math.max(...barriers.map((barrier) => barrier.halfExtents[2])),
+      invalidIds: barriers.filter((barrier) => !barrier.id.startsWith('monza-boundary-')).length,
+      blockingIds: blocking.map((barrier) => barrier.id),
+    };
+  });
+
+  expect(result.count).toBeLessThan(result.centerlineCount);
+  expect(result.maxHalfLength).toBeLessThan(18);
+  expect(result.invalidIds).toBe(0);
+  expect(result.blockingIds).toEqual([]);
+  expect(result.state.physics).toBe('Vehicle Sim worker dynamics');
+  expect(errors).toEqual([]);
 });
 
 test('standalone Monza boots the Vehicle Sim v0.1 physics runtime', async ({ page }) => {

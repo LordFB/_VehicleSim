@@ -15,9 +15,25 @@ describe('Monza high-detail environment', () => {
     expect(detail?.fenceRuns.length).toBeGreaterThanOrEqual(5);
     expect(track.features.forests?.length).toBeGreaterThanOrEqual(20);
     expect(detail?.serviceRoads.length).toBeGreaterThanOrEqual(4);
-    expect(detail?.builtAreas.length).toBeGreaterThanOrEqual(5);
+    expect(detail?.builtAreas.length).toBeGreaterThanOrEqual(24);
     expect(detail?.paintedRunoffs.length).toBeGreaterThanOrEqual(6);
     expect(detail?.brakingBoards.length).toBeGreaterThanOrEqual(24);
+    expect(detail?.referenceSurvey.era).toBe('2024-2026');
+    expect(detail?.referenceSurvey.sources.map((source) => source.kind)).toEqual(
+      expect.arrayContaining(['satellite', 'ground-photo', 'official-map']),
+    );
+    expect(detail?.builtAreas.map((area) => area.name)).toEqual(expect.arrayContaining([
+      'paddock-hospitality-north',
+      'rettifilo-external-grandstand',
+      'roggia-grandstand',
+      'ascari-exit-grandstand',
+      'alboreto-infield-grandstand',
+      'mirabello-underpass-portal',
+      'vedano-underpass-portal',
+    ]));
+    expect(new Set(detail?.builtAreas.map((area) => area.profile))).toEqual(
+      new Set(['building', 'grandstand', 'canopy', 'portal']),
+    );
   });
 
   it('applies committed OpenTopo elevation samples as a normalized Monza terrain profile', () => {
@@ -61,11 +77,19 @@ describe('Monza high-detail environment', () => {
       'monza-detail-fence-rails',
       'monza-detail-service-roads',
       'monza-detail-built-areas',
+      'monza-detail-grandstands',
+      'monza-detail-canopies',
+      'monza-detail-portals',
       'monza-detail-runoff-green',
       'monza-detail-braking-boards',
     ]));
+    const builtMeshes = asset.object.children.filter(
+      (obj): obj is THREE.InstancedMesh => obj instanceof THREE.InstancedMesh
+        && ['monza-detail-built-areas', 'monza-detail-grandstands', 'monza-detail-canopies', 'monza-detail-portals'].includes(obj.name),
+    );
+    expect(builtMeshes.every((mesh) => mesh.instanceColor !== null)).toBe(true);
     // Keep the detail pass bounded: several batched layers, not one draw per object.
-    expect(instancedNames.length).toBeLessThanOrEqual(12);
+    expect(instancedNames.length).toBeLessThanOrEqual(15);
 
     for (const disposable of asset.disposables) disposable.dispose();
   });

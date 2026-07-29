@@ -2,7 +2,7 @@
 
 ## Last updated
 
-2026-07-27 by Codex
+2026-07-29 by Codex
 
 ## Current phase
 
@@ -10,32 +10,24 @@ development
 
 ## Current milestone
 
-Milestone 008 - Netlify Leaderboards (`docs/milestones/008-netlify-leaderboards.md`)
+Milestone 011 - Deterministic Race Damage (`docs/milestones/011-deterministic-race-damage.md`)
 
 ## Last action
 
-Implemented the deploy-ready Netlify leaderboard slice:
-
-- persistent local player handles and an accessible in-game competition drawer;
-- ranked Monza standings with best-per-driver aggregation;
-- valid-lap-only submission wired to the competition lap state;
-- a same-origin Netlify Function backed by strongly consistent Netlify Blobs;
-- immutable unique lap records, server-generated identifiers/timestamps, payload validation, and edge rate limiting;
-- focused unit coverage, a production build, a Netlify function bundle, and an integrated Playwright browser check.
-
-The user confirmed the Milestone 007 competition-integrity playtest on 2026-07-27.
+Fixed the Turn 1 launch regression in standalone Monza. The Rettifilo escape-road mesh had carried a 14 cm visual lift into the physics surface, producing an 11.2 cm collision step across the approach. Its collision geometry now matches the terrain road crown, grade, bank, and normal at the join. A focused seam regression test, the related Monza/runtime tests, a live Chromium geometry/state/console probe, visual capture, and the production build pass.
 
 ## Next step
 
-Link or deploy the site on Netlify, exercise `/api/leaderboard` against the hosted Blobs store, and complete the Milestone 008 production smoke test.
+User drives through Variante del Rettifilo to confirm the launch is gone, then completes a clean Monza lap—especially Roggia and both Lesmos—to confirm no invisible boundary is encountered before the visible Armco.
 
 ## Blockers
 
-- A Netlify site link/deployment is required for the real hosted-store exit condition.
-- Submissions are labelled `client-integrity`; replay-grade authoritative lap evidence remains a future anti-cheat milestone.
-- The full unit suite passes 86 of 87 tests; the pre-existing `flipRepro` diagnostic exceeds its five-second timeout after producing its output.
-- `npm audit --omit=dev` reports three moderate advisories in the current Netlify Blobs telemetry dependency path, with no high or critical advisories.
+- Milestone 008 still requires a future linked Netlify deployment for its hosted-store exit condition.
+- The pre-existing `flipRepro` diagnostic may exceed its five-second timeout after producing output.
+- The full unit suite currently also has unrelated expectation failures in `cockpitWheelView.test.ts` and `vehicleViewSmoothing.test.ts`; the focused environment tests are green.
+- Milestone 011's HUD/feel acceptance criterion remains pending user playtest.
 
 ## Notes for next session
 
-Deploy or link the repository to its intended Netlify site, then test player-name persistence, a clean-lap submission, standings refresh/reload, and an invalid reset-assisted lap against the real hosted service.
+Damage is race-session-local and does not affect Time Trial or its leaderboard. ADR 0006 records worker authority and the model-neutral consequence boundary.
+Milestone 004 has a follow-up reference-fidelity AC pending the user's visual playtest; source imagery is used only as research and is not bundled into the game.

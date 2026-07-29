@@ -320,6 +320,29 @@ export type PhysicsSetup = {
   stabilityControl: number; // 0..1 — counters excess yaw (spin) with asymmetric brake/throttle trim
 };
 
+/** Model-neutral consequences produced by the race damage authority. */
+export type VehicleDamageEffects = {
+  powerScale: number;
+  downforceScale: number;
+  dragScale: number;
+  steeringScale: number;
+  steeringBias: number;
+  wheelGripScale: Record<WheelId, number>;
+  punctured: Record<WheelId, boolean>;
+  retired: boolean;
+};
+
+export const DEFAULT_VEHICLE_DAMAGE_EFFECTS: VehicleDamageEffects = {
+  powerScale: 1,
+  downforceScale: 1,
+  dragScale: 1,
+  steeringScale: 1,
+  steeringBias: 0,
+  wheelGripScale: { frontLeft: 1, frontRight: 1, rearLeft: 1, rearRight: 1 },
+  punctured: { frontLeft: false, frontRight: false, rearLeft: false, rearRight: false },
+  retired: false,
+};
+
 export const DEFAULT_PHYSICS_SETUP: PhysicsSetup = {
   brakeForceScale: 1,
   brakeBias: 0.6,

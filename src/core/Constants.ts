@@ -50,7 +50,9 @@ export const COCKPIT = {
 };
 
 export const VEHICLE_VIEW = {
+  CHASSIS_POSITION_LERP: 0.42,
   CHASSIS_ORIENTATION_LERP: 0.32,
+  WHEEL_POSE_LERP: 0.48,
 };
 
 // Warm golden-hour lighting rig (Forza Horizon identity).

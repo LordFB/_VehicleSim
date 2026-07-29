@@ -2,7 +2,7 @@
 
 ## Status
 
-in-progress
+deferred
 
 ## Objective
 
@@ -47,6 +47,8 @@ Write red-first unit tests for the shared contract, storage-independent Function
 ## Notes
 
 This milestone deliberately labels entries `client-integrity`. It is suitable for a first public casual board, not prizes or stewarded esports. ADR 0004 records the immutable-write storage model and its limits.
+
+The hosted Netlify smoke test was explicitly deferred on 2026-07-27 so Milestones 009 and 010 could proceed. The implementation and automated checks remain intact; this milestone is not complete until its production exit condition is exercised.
 
 ## Verification
 

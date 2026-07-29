@@ -10,3 +10,15 @@
   command = "npm run dev"
   targetPort = 3000
   port = 8888
+
+[[redirects]]
+  from = "/"
+  to = "/monza.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/track-editor"
+  to = "/simulator.html"
+  status = 200
+  force = true

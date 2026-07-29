@@ -6,12 +6,13 @@ import type {
   BarrierSpec,
   TelemetryFrame,
   VehicleSpec,
+  VehicleDamageEffects,
   WheelId,
   WheelSnapshot,
   WheelSpec,
   WheelTelemetry,
 } from '../types';
-import { DEFAULT_PHYSICS_SETUP } from '../types';
+import { DEFAULT_PHYSICS_SETUP, DEFAULT_VEHICLE_DAMAGE_EFFECTS } from '../types';
 import { Quat } from '../math/Quat';
 import { clamp, interpolateCurve, lerp, Vec3, VEC3_FORWARD, VEC3_RIGHT, VEC3_UP } from '../math/Vec3';
 import { RigidBody } from './RigidBody';
@@ -92,6 +93,11 @@ export class Vehicle {
   private currentSnapshot: PhysicsSnapshot;
   // Live setup overlay (identity by default → stock validated physics).
   private setup: PhysicsSetup = { ...DEFAULT_PHYSICS_SETUP };
+  private damageEffects: VehicleDamageEffects = {
+    ...DEFAULT_VEHICLE_DAMAGE_EFFECTS,
+    wheelGripScale: { ...DEFAULT_VEHICLE_DAMAGE_EFFECTS.wheelGripScale },
+    punctured: { ...DEFAULT_VEHICLE_DAMAGE_EFFECTS.punctured },
+  };
 
   constructor(spec: VehicleSpec, private readonly spawn?: { position: [number, number, number]; yawRad: number }) {
     this.spec = spec;
@@ -120,6 +126,14 @@ export class Vehicle {
   /** Apply a live setup overlay (brakes/aero/grip/ride/final-drive multipliers). */
   applySetup(setup: PhysicsSetup): void {
     this.setup = { ...setup };
+  }
+
+  applyDamageEffects(effects: VehicleDamageEffects): void {
+    this.damageEffects = {
+      ...effects,
+      wheelGripScale: { ...effects.wheelGripScale },
+      punctured: { ...effects.punctured },
+    };
   }
 
   reset(seed: number): void {
@@ -176,7 +190,12 @@ export class Vehicle {
       STEER_SPEED_FLOOR,
       1 - (1 - STEER_SPEED_FLOOR) * Math.min(1, speedForSteer / STEER_SPEED_FULLSCALE),
     );
-    const targetSteer = clamp(this.lastInput.steering, -1, 1) * this.spec.steering.maxAngleRad * steerScale;
+    const damagedSteer = clamp(
+      this.lastInput.steering * this.damageEffects.steeringScale + this.damageEffects.steeringBias,
+      -1,
+      1,
+    );
+    const targetSteer = damagedSteer * this.spec.steering.maxAngleRad * steerScale;
     this.steeringAngle += (targetSteer - this.steeringAngle) * clamp(dt * this.spec.steering.responseRate, 0, 1);
 
     const samples = this.sampleSuspension(dt, surfaceSystem);
@@ -194,10 +213,13 @@ export class Vehicle {
       const vLong = this.chassis.velocityAtPoint(hp).dot(chassisForwardFlat);
       return vLong / wheel.spec.tire.radius;
     });
+    const drivetrainInput = this.damageEffects.powerScale === 1
+      ? this.lastInput
+      : { ...this.lastInput, throttle: this.lastInput.throttle * this.damageEffects.powerScale };
     const drivetrain = solveDrivetrain(
       this.spec.engine,
       drivetrainSpec,
-      this.lastInput,
+      drivetrainInput,
       driven.map((wheel) => wheel.angularVelocity),
       driven.map((wheel) => wheel.spec.id),
       dt,
@@ -467,9 +489,15 @@ export class Vehicle {
       const slipAngle = Math.atan2(vLat, Math.max(Math.abs(vLong), 1));
       // Setup grip overlay: scale the contact friction both axes (1 = stock). A fresh
       // contact object is used so the surface system's data is never mutated.
-      const gripSurface = this.setup.gripScale === 1
+      const damageGrip = this.damageEffects.wheelGripScale[wheel.spec.id];
+      const totalGripScale = this.setup.gripScale * damageGrip;
+      const gripSurface = totalGripScale === 1
         ? sample.contact
-        : { ...sample.contact, muLongitudinal: sample.contact.muLongitudinal * this.setup.gripScale, muLateral: sample.contact.muLateral * this.setup.gripScale };
+        : {
+            ...sample.contact,
+            muLongitudinal: sample.contact.muLongitudinal * totalGripScale,
+            muLateral: sample.contact.muLateral * totalGripScale,
+          };
       const forces = calculateTireForces({
         tire: wheel.spec.tire,
         normalLoad: wheel.telemetry.loadN,
@@ -526,7 +554,7 @@ export class Vehicle {
       const tireForce = wheelForward.scaled(forces.fx).add(wheelRight.scaled(forces.fy));
       this.chassis.applyForce(tireForce, sample.contactPoint);
       // Track the lateral grip the tyres are seeing for the ESC yaw-rate reference.
-      this.lastGripMu = this.lastGripMu * 0.9 + sample.contact.muLateral * forces.muScale * 0.1;
+      this.lastGripMu = this.lastGripMu * 0.9 + gripSurface.muLateral * forces.muScale * 0.1;
 
       // Setup overlay: scale total brake force and split it by the configured bias
       // (front share). Defaults reproduce the stock per-wheel bias exactly.
@@ -647,8 +675,14 @@ export class Vehicle {
   private applyAero(): void {
     const speedSq = this.chassis.linearVelocity.lengthSq();
     if (speedSq < 0.01) return;
-    const drag = this.chassis.linearVelocity.normalized().scale(-0.5 * this.spec.aero.airDensity * this.spec.aero.dragArea * this.setup.dragScale * speedSq);
-    const downforce = VEC3_UP.scaled(-0.5 * this.spec.aero.airDensity * this.spec.aero.liftArea * this.setup.downforceScale * speedSq);
+    const drag = this.chassis.linearVelocity.normalized().scale(
+      -0.5 * this.spec.aero.airDensity * this.spec.aero.dragArea
+      * this.setup.dragScale * this.damageEffects.dragScale * speedSq,
+    );
+    const downforce = VEC3_UP.scaled(
+      -0.5 * this.spec.aero.airDensity * this.spec.aero.liftArea
+      * this.setup.downforceScale * this.damageEffects.downforceScale * speedSq,
+    );
     const cp = this.chassisLocalToWorld(Vec3.fromTuple(this.spec.aero.centerOfPressure));
     this.chassis.applyForce(drag, cp);
     this.chassis.applyForce(downforce, cp);

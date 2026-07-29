@@ -171,6 +171,10 @@ function outerBarriers(line: CenterlinePoint[]): BarrierSpec[] {
     for (const sgn of [1, -1] as const) {
       const cx = p.pos[0] + p.left[0] * off * sgn;
       const cz = p.pos[1] + p.left[1] * off * sgn;
+      // Rettifilo's real straight-ahead escape route occupies the original direction
+      // of the main straight. The generic edge-wall pass must leave that corridor
+      // open instead of drawing/colliding through it.
+      if (cx > -7 && cx < 7 && cz > 296 && cz < 410) continue;
       out.push({ id: `wall_${n++}`, center: [cx, cube, cz], halfExtents: [cube, cube, cube] });
     }
   }

@@ -5,7 +5,7 @@ test('app renders a nonblank drivable simulator and telemetry updates', async ({
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(message.text());
   });
-  await page.goto('/?e2e=1&debug=1');
+  await page.goto('/simulator.html?e2e=1&debug=1');
   await expect(page.locator('.telemetry')).toBeVisible();
   await page.keyboard.down('KeyW');
   await page.waitForTimeout(1200);
@@ -26,7 +26,7 @@ test('app renders a nonblank drivable simulator and telemetry updates', async ({
 });
 
 test('reset works repeatedly and resize keeps the canvas visible', async ({ page }) => {
-  await page.goto('/?e2e=1');
+  await page.goto('/simulator.html?e2e=1');
   for (let i = 0; i < 3; i += 1) {
     await page.keyboard.press('KeyR');
     await page.waitForTimeout(150);
@@ -43,7 +43,7 @@ test('camera modes cycle to onboard and survive reset and resize', async ({ page
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(message.text());
   });
-  await page.goto('/?e2e=1&debug=1');
+  await page.goto('/simulator.html?e2e=1&debug=1');
   await page.waitForFunction(
     () => Boolean((window as unknown as { __game?: { currentCameraMode: () => string } }).__game),
     null,
@@ -85,7 +85,7 @@ test('camera modes cycle to onboard and survive reset and resize', async ({ page
 });
 
 test('car setup modal remains operable after TrackPrint UI styling', async ({ page }) => {
-  await page.goto('/?e2e=1');
+  await page.goto('/simulator.html?e2e=1');
   await page.getByRole('button', { name: /setup/i }).click();
   await expect(page.getByRole('dialog', { name: 'Car setup' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Tuning' })).toHaveClass(/is-active/);
@@ -101,7 +101,7 @@ test('nordschleife track renders and exposes asphalt contact', async ({ page }) 
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(message.text());
   });
-  await page.goto('/?track=nordschleife&e2e=1&debug=1');
+  await page.goto('/simulator.html?track=nordschleife&e2e=1&debug=1');
   await expect(page.locator('.telemetry')).toBeVisible();
   await page.waitForTimeout(900);
   const probe = await page.evaluate(() => {

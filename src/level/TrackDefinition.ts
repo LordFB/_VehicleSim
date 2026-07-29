@@ -36,6 +36,7 @@ export type MonzaDetailBox = {
   size: Vec3Tuple;
   yawRad: number;
   color?: number;
+  profile: 'building' | 'grandstand' | 'canopy' | 'portal';
 };
 
 export type MonzaPaintedRunoff = {
@@ -44,6 +45,14 @@ export type MonzaPaintedRunoff = {
   size: [number, number];
   yawRad: number;
   color: 'green' | 'white' | 'red';
+};
+
+export type MonzaSurfaceArea = {
+  name: string;
+  materialId: 'asphalt_new' | 'gravel' | 'painted_line';
+  points: Array<[number, number]>;
+  elevations: number[];
+  color: number;
 };
 
 export type MonzaBrakingBoard = {
@@ -65,9 +74,19 @@ export type MonzaDetailSpec = {
   serviceRoads: MonzaDetailPolyline[];
   fenceRuns: MonzaDetailPolyline[];
   builtAreas: MonzaDetailBox[];
+  surfaceAreas: MonzaSurfaceArea[];
   paintedRunoffs: MonzaPaintedRunoff[];
   brakingBoards: MonzaBrakingBoard[];
   openTopo: MonzaOpenTopoProfile;
+  referenceSurvey: {
+    era: string;
+    reviewed: string;
+    sources: Array<{
+      kind: 'satellite' | 'ground-photo' | 'official-map';
+      url: string;
+      observation: string;
+    }>;
+  };
 };
 
 export type TrackFeatures = {

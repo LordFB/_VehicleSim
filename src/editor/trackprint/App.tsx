@@ -1353,7 +1353,8 @@ export function App() {
       setSaveStatus(`Could not launch sim: ${error instanceof Error ? error.message : 'preview storage failed'}`);
       return;
     }
-    const target = new URL('/', window.location.href);
+    const target = new URL(window.location.href);
+    target.pathname = '/simulator.html';
     target.searchParams.set('track', 'trackprint');
     if (new URLSearchParams(window.location.search).has('e2e')) target.searchParams.set('e2e', '1');
     if (new URLSearchParams(window.location.search).has('debug')) target.searchParams.set('debug', '1');

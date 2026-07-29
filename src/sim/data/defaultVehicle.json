@@ -31,7 +31,7 @@
         "pneumaticTrail": 0.05,
         "rollingResistanceScale": 0.011,
         "optimalTempC": 90,
-        "coldMuScale": 0.85,
+        "coldMuScale": 0.9,
         "overheatMuScale": 0.78,
         "wearRate": 1
       },
@@ -70,7 +70,7 @@
         "pneumaticTrail": 0.05,
         "rollingResistanceScale": 0.011,
         "optimalTempC": 90,
-        "coldMuScale": 0.85,
+        "coldMuScale": 0.9,
         "overheatMuScale": 0.78,
         "wearRate": 1
       },
@@ -109,7 +109,7 @@
         "pneumaticTrail": 0.055,
         "rollingResistanceScale": 0.011,
         "optimalTempC": 92,
-        "coldMuScale": 0.85,
+        "coldMuScale": 0.9,
         "overheatMuScale": 0.77,
         "wearRate": 1.05
       },
@@ -148,7 +148,7 @@
         "pneumaticTrail": 0.055,
         "rollingResistanceScale": 0.011,
         "optimalTempC": 92,
-        "coldMuScale": 0.85,
+        "coldMuScale": 0.9,
         "overheatMuScale": 0.77,
         "wearRate": 1.05
       },

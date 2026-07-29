@@ -5,7 +5,7 @@
     {
       "id": "asphalt_new",
       "muLongitudinal": 1.12,
-      "muLateral": 1.08,
+      "muLateral": 1.42,
       "roughness": 0.28,
       "wetness": 0,
       "temperatureC": 28,

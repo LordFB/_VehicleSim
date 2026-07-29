@@ -19,6 +19,7 @@ Make the default Monza circuit feel more like Autodromo Nazionale Monza inside P
 - [x] Scenery builds billboarded tree chunks with multiple Parco di Monza species and no per-tree mesh leaks. Covered by `tests/unit/scenery.test.ts`.
 - [x] Repeated circuit details render through instanced meshes with bounded draw groups and culling enabled. Covered by `tests/unit/monzaDetail.test.ts`.
 - [x] Build and focused Monza/scenery tests pass. Verified with `npm test -- tests/unit/monzaDetail.test.ts tests/unit/scenery.test.ts`, `npm run build`, and `node scripts/monza-smoke.mjs http://127.0.0.1:3173 --spawn-vite`.
+- [ ] A July 2026 satellite/photo reference pass is committed with source URLs and reflected in distinct main-straight, Rettifilo, Roggia, Ascari, Alboreto, paddock, and access-underpass massing. Covered by `tests/unit/monzaDetail.test.ts`; final appearance requires user playtest.
 
 ## Exit Condition
 

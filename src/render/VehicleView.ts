@@ -26,7 +26,10 @@ export class VehicleView {
   private readonly brakeMaterials: THREE.MeshStandardMaterial[] = [];
   private readonly suspensionArms: Array<{ link: THREE.Object3D; wheel: WheelId; anchor: THREE.Vector3; radius: number }> = [];
   private readonly disposables: Array<THREE.BufferGeometry | THREE.Material> = [];
+  private readonly smoothedChassisPosition = new THREE.Vector3();
   private readonly smoothedChassisOrientation = new THREE.Quaternion();
+  private readonly smoothedWheelPositions = new Map<WheelId, THREE.Vector3>();
+  private readonly smoothedWheelOrientations = new Map<WheelId, THREE.Quaternion>();
   private chassisSmoothingInitialized = false;
 
   constructor(spec: VehicleSpec, environment: THREE.Texture | null = null) {
@@ -307,7 +310,9 @@ export class VehicleView {
       const tireMaterial = tireProto.clone();
       const tireGeo = tyre(r, width);
       const tire = new THREE.Mesh(tireGeo, tireMaterial);
-      tire.castShadow = true;
+      // Tire-only shadows read as four detached black blocks because the
+      // detailed bodywork intentionally does not cast twelve-car shadow maps.
+      tire.castShadow = false;
       wheelGroup.add(tire);
       this.disposables.push(tireGeo, tireMaterial);
 
@@ -445,7 +450,7 @@ export class VehicleView {
       const wheel = this.wheels.get(id);
       const wheelSnapshot = snapshot.wheels[id];
       if (!wheel || !wheelSnapshot) continue;
-      setPose(wheel, wheelSnapshot.pose.position, wheelSnapshot.pose.orientation);
+      this.applyWheelPose(id, wheel, wheelSnapshot.pose.position, wheelSnapshot.pose.orientation, delta);
       const telemetry = snapshot.telemetry.wheels[id];
       const material = this.wheelMaterials.get(id);
       if (material && telemetry) material.color.setHex(COLORS.WHEEL);
@@ -467,6 +472,8 @@ export class VehicleView {
 
   resetSmoothing(): void {
     this.chassisSmoothingInitialized = false;
+    this.smoothedWheelPositions.clear();
+    this.smoothedWheelOrientations.clear();
   }
 
   setCameraMode(mode: CameraMode): void {
@@ -479,7 +486,7 @@ export class VehicleView {
   }
 
   private applyChassisPose(snapshot: PhysicsSnapshot, delta: number): void {
-    this.chassis.position.set(
+    const targetPosition = new THREE.Vector3(
       snapshot.chassis.position[0],
       snapshot.chassis.position[1],
       snapshot.chassis.position[2],
@@ -491,18 +498,44 @@ export class VehicleView {
       snapshot.chassis.orientation[3],
     );
     if (!this.chassisSmoothingInitialized) {
+      this.smoothedChassisPosition.copy(targetPosition);
       this.smoothedChassisOrientation.copy(target);
       this.chassisSmoothingInitialized = true;
     } else {
+      this.smoothedChassisPosition.lerp(
+        targetPosition,
+        frameAlpha(VEHICLE_VIEW.CHASSIS_POSITION_LERP, delta),
+      );
       this.smoothedChassisOrientation.slerp(target, frameAlpha(VEHICLE_VIEW.CHASSIS_ORIENTATION_LERP, delta));
     }
+    this.chassis.position.copy(this.smoothedChassisPosition);
     this.chassis.quaternion.copy(this.smoothedChassisOrientation);
   }
-}
 
-function setPose(object: THREE.Object3D, position: [number, number, number], orientation: [number, number, number, number]): void {
-  object.position.set(position[0], position[1], position[2]);
-  object.quaternion.set(orientation[0], orientation[1], orientation[2], orientation[3]);
+  private applyWheelPose(
+    id: WheelId,
+    wheel: THREE.Object3D,
+    position: [number, number, number],
+    orientation: [number, number, number, number],
+    delta: number,
+  ): void {
+    const targetPosition = new THREE.Vector3(...position);
+    const targetOrientation = new THREE.Quaternion(...orientation);
+    let smoothPosition = this.smoothedWheelPositions.get(id);
+    let smoothOrientation = this.smoothedWheelOrientations.get(id);
+    if (!smoothPosition || !smoothOrientation) {
+      smoothPosition = targetPosition.clone();
+      smoothOrientation = targetOrientation.clone();
+      this.smoothedWheelPositions.set(id, smoothPosition);
+      this.smoothedWheelOrientations.set(id, smoothOrientation);
+    } else {
+      const alpha = frameAlpha(VEHICLE_VIEW.WHEEL_POSE_LERP, delta);
+      smoothPosition.lerp(targetPosition, alpha);
+      smoothOrientation.slerp(targetOrientation, alpha);
+    }
+    wheel.position.copy(smoothPosition);
+    wheel.quaternion.copy(smoothOrientation);
+  }
 }
 
 function frameAlpha(lerp: number, delta: number): number {

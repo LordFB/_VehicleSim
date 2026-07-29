@@ -135,6 +135,31 @@
     font-family:var(--f-disp);font-size:26px;letter-spacing:.1em;text-transform:uppercase;
     opacity:0;transition:opacity .35s;pointer-events:none;text-shadow:0 3px 18px #000}
 
+  #appMenu{position:fixed;inset:0;z-index:100;display:grid;place-items:center;
+    background:
+      linear-gradient(90deg,rgba(4,7,10,.96),rgba(4,7,10,.68) 52%,rgba(4,7,10,.88)),
+      radial-gradient(circle at 72% 30%,rgba(225,6,0,.2),transparent 36%),
+      #080b0f}
+  #appMenu[hidden]{display:none}
+  .menu-panel{width:min(560px,calc(100vw - 40px));padding:34px;border:1px solid var(--line);
+    background:linear-gradient(155deg,rgba(24,29,35,.98),rgba(8,11,15,.98));
+    box-shadow:0 32px 90px rgba(0,0,0,.7)}
+  .menu-kicker{color:var(--rosso);font-size:11px;letter-spacing:.32em;text-transform:uppercase}
+  .menu-panel h1{margin:10px 0 8px;font-family:var(--f-disp);font-size:clamp(42px,7vw,76px);
+    line-height:.86;text-transform:uppercase}
+  .menu-panel p{color:var(--dim);max-width:44ch;line-height:1.5}
+  .menu-actions{display:grid;gap:10px;margin-top:28px}
+  .menu-actions[hidden],.race-results[hidden]{display:none}
+  .menu-actions button{min-height:54px;text-align:left;padding:0 18px;border:1px solid #3a444f;
+    color:var(--text);background:#151a20;font:700 17px var(--f-disp);letter-spacing:.12em;text-transform:uppercase}
+  .menu-actions button:hover,.menu-actions button:focus-visible{border-color:var(--rosso);background:#211719;outline:none}
+  .menu-actions .primary{background:var(--rosso);border-color:var(--rosso)}
+  .menu-meta{display:flex;gap:18px;margin-top:22px;color:var(--dim);font-size:10px;letter-spacing:.14em;text-transform:uppercase}
+  .race-results{max-height:42vh;overflow:auto;margin-top:18px;border-top:1px solid var(--line)}
+  .race-result{display:grid;grid-template-columns:36px 1fr auto;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}
+  body.menu-open canvas#game,body.menu-open>.hud,body.menu-open>#grain,body.menu-open>#vignette,
+  body.menu-open>#toast,body.menu-open>#load{visibility:hidden}
+
   @media (max-width:880px){
     #title{width:250px}#title h1{font-size:19px}#title .facts .num{font-size:16px}
     #timing{width:172px}#lapBig{font-size:29px}
@@ -143,7 +168,31 @@
   }
 </style>
 </head>
-<body>
+<body class="menu-open">
+<main id="appMenu" aria-labelledby="menuTitle">
+  <section class="menu-panel">
+    <div class="tricolore"><i></i><i></i><i></i></div>
+    <div class="menu-kicker">Vehicle Sim v0.1</div>
+    <h1 id="menuTitle">Monza</h1>
+    <p id="menuCopy">Hardcore vehicle dynamics at the Temple of Speed. Chase a valid lap or race a full twelve-car grid.</p>
+    <div class="menu-actions" id="mainActions">
+      <button class="primary" id="menuTimeTrial">Time Trial</button>
+      <button id="menuRace">Race</button>
+    </div>
+    <div class="menu-actions" id="raceActions" hidden>
+      <button class="primary" id="menuParticipate">Participate</button>
+      <button id="menuWatch">Watch Race</button>
+      <button id="menuBack">Back</button>
+    </div>
+    <div class="menu-actions" id="pauseActions" hidden>
+      <button class="primary" id="menuResume">Resume</button>
+      <button id="menuRestart">Restart / Rematch</button>
+      <button id="menuMain">Main Menu</button>
+    </div>
+    <div id="raceResults" class="race-results" hidden></div>
+    <div class="menu-meta"><span>12 cars</span><span>3 laps</span><span>5.793 km</span></div>
+  </section>
+</main>
 <canvas id="game"></canvas>
 <div id="vignette"></div><div id="grain"></div>
 
@@ -169,8 +218,8 @@
     <div id="lapDelta">&nbsp;</div>
     <div id="lapStatus">Valid lap</div>
     <div id="sectors"><b id="s1"></b><b id="s2"></b><b id="s3"></b></div>
-    <div class="row"><span class="lbl">Best</span><span class="v" id="tBest">—:—.—</span></div>
-    <div class="row"><span class="lbl">Last</span><span class="v" id="tLast">—:—.—</span></div>
+    <div class="row"><span class="lbl" id="tBestLabel">Best</span><span class="v" id="tBest">—:—.—</span></div>
+    <div class="row"><span class="lbl" id="tLastLabel">Last</span><span class="v" id="tLast">—:—.—</span></div>
     <div class="row"><span class="lbl">Lap</span><span class="v" id="tLapNo">1</span></div>
     <div class="row"><span class="lbl">Camera</span><span class="v" id="tCam">COCKPIT</span></div>
   </div>
@@ -227,10 +276,17 @@
 <script type="module">
 import * as THREE from 'three';
 import { MonzaVehicleSim } from '/src/standalone/MonzaVehicleSim.ts';
+import {
+  RETTIFILO_ESCAPE_FROM_M,
+  RETTIFILO_ESCAPE_TO_M,
+  buildRettifiloEscapeSurface,
+} from '/src/standalone/MonzaVehicleSim.ts';
 import { SetupModal } from '/src/ui/SetupModal.ts';
 import { saveCarSetup } from '/src/game/CarSetup.ts';
 import { CompetitionLapController } from '/src/game/CompetitionLap.ts';
 import { CompetitionPanel } from '/src/ui/CompetitionPanel.ts';
+import { MonzaAppFlow } from '/src/app/MonzaAppFlow.ts';
+import { MonzaRaceSession } from '/src/race/MonzaRaceSession.ts';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    AUTODROMO NAZIONALE DI MONZA — track module
@@ -1108,10 +1164,17 @@ class TrackSurface {
         if (w > 0.12) this.cornerAt[i] = ci;
       });
 
-      let outsideType = RUNOFF[c.runoff] ?? 0;
+      const isRettifilo = c.turn === 1 || c.turn === 2;
+      // Rettifilo's large infield is grass around the straight escape road.
+      // A generic centreline-following gravel ribbon bridges the two chicane
+      // legs and reads as a huge sand trap, so its narrow current gravel
+      // patches belong in the authored corner detail instead.
+      let outsideType = isRettifilo ? 0 : (RUNOFF[c.runoff] ?? 0);
       if (c.turn === 4 || c.turn === 5) outsideType = RUNOFF.gravel;
       if (outsideType) {
-        const outsideWidth = outsideType === RUNOFF.asphalt
+        const outsideWidth = isRettifilo
+          ? 5
+          : outsideType === RUNOFF.asphalt
           ? (c.turn === 11 ? 28 : 24)
           : (c.turn === 4 || c.turn === 5 ? 14 : 20);
         markEnvelope(c.start - pre * 2, c.start + c.length + post * 1.6,
@@ -1124,7 +1187,7 @@ class TrackSurface {
           });
 
         // Narrow paved escape/rejoin strips only; no full-width inner runoff.
-        if (c.radius < 75) {
+        if (c.radius < 75 && !isRettifilo) {
           markEnvelope(c.start - pre, c.start + c.length + post,
             RUNOFF_TAPER_M * 0.8, (i, w) => {
               const mix = w * 0.82;
@@ -1252,10 +1315,17 @@ class TrackSurface {
       map: fenceTex, transparent: true, side: THREE.DoubleSide, depthWrite: false, opacity: 0.9 });
 
     [0, 1].forEach(side => {
-      const lat = i => this.edgeBarrier(i, side) * sgn(side);
+      const lat = i => (
+        inRange(cl.s[i], RETTIFILO_ESCAPE_FROM_M - 20, RETTIFILO_ESCAPE_TO_M + 20, cl.length)
+          ? null
+          : this.edgeBarrier(i, side) * sgn(side)
+      );
       // guardrail: two horizontal beams
       [[0.42, 0.34], [0.78, 0.30]].forEach(([h, t]) => {
-        const g = buildRibbon(cl, i => [lat(i), h, lat(i), h + t], { vScale: 6, uSpan: 0.4 });
+        const g = buildRibbon(cl, i => {
+          const l = lat(i);
+          return l === null ? null : [l, h, l, h + t];
+        }, { vScale: 6, uSpan: 0.4 });
         const m = new THREE.Mesh(g, armcoMat); m.castShadow = false; G.add(m);
       });
       // Concrete appears at spectator and high-energy zones; wooded straights
@@ -1266,13 +1336,15 @@ class TrackSurface {
           inRange(s, 620, 1020, cl.length) || inRange(s, 1830, 2190, cl.length) ||
           inRange(s, 3800, 4320, cl.length) || inRange(s, 4980, 5620, cl.length);
         if (!spectator && this.runoffMix[side][i] < .42) return null;
-        return [lat(i), -0.30, lat(i), 0.42];
+        const l = lat(i);
+        return l === null ? null : [l, -0.30, l, 0.42];
       }, { vScale: 6, uSpan: .4 });
       G.add(new THREE.Mesh(concrete, concMat));
       // catch fence above, only where there are spectators/run-off outside
       const g = buildRibbon(cl, i => {
         if (this.runoffMix[side][i] < .08 && Math.abs(cl.curv[i]) < 0.0025) return null;
-        return [lat(i), 1.15, lat(i), 4.3];
+        const l = lat(i);
+        return l === null ? null : [l, 1.15, l, 4.3];
       }, { vScale: 6, uSpan: 1 });
       G.add(new THREE.Mesh(g, fenceMat));
       // posts, instanced every ~9 m
@@ -1282,13 +1354,17 @@ class TrackSurface {
         new THREE.BoxGeometry(0.11, 1.25, 0.11), postMat, cnt);
       const mtx = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion();
       const up = new THREE.Vector3(0, 1, 0), scl = new THREE.Vector3(1, 1, 1);
+      let postCount = 0;
       for (let c = 0; c < cnt; c++) {
         const i = c * step;
-        cl.point(i, lat(i), 0.32, p);
+        const l = lat(i);
+        if (l === null) continue;
+        cl.point(i, l, 0.32, p);
         q.setFromAxisAngle(up, Math.atan2(cl.tx[i], cl.tz[i]));
         mtx.compose(p, q, scl);
-        post.setMatrixAt(c, mtx);
+        post.setMatrixAt(postCount++, mtx);
       }
+      post.count = postCount;
       post.instanceMatrix.needsUpdate = true;
       post.castShadow = true;
       G.add(post);
@@ -1301,6 +1377,7 @@ class TrackSurface {
     this.cl.corners.forEach(c => {
       if (Math.abs(c.sweep) < 20) return;
       const outside = c.sweep > 0 ? 0 : 1;
+      if (c.turn === 1 || c.turn === 2) return;
       const from = c.start - 20, to = c.start + c.length + 40;
       for (let s = from; s < to; s += 2.4) {
         const i = Math.round((((s % cl.length) + cl.length) % cl.length) / cl.length * cl.count) % cl.count;
@@ -1526,7 +1603,10 @@ function makeTerrain(cl, extent = 3400, res = IS_E2E ? 78 : 150) {
   geo.computeVertexNormals();
   const mat = new THREE.MeshStandardMaterial({
     map: TexFactory._wrap(TexFactory.grass(), 220, 220, 4), roughness: 0.98,
-    color: 0xd7d2a3,
+    // The park is densely green around Rettifilo and the old banking. The
+    // former warm concrete tint turned every broad terrain patch into what
+    // looked like an invented sand trap in overhead and orbit cameras.
+    color: 0x9fbd7f,
   });
   const m = new THREE.Mesh(geo, mat);
   m.receiveShadow = true;
@@ -1975,33 +2055,67 @@ function makeReferenceDetails(cl, surf) {
     return object;
   };
 
-  // Rettifilo: asymmetric paved escape and the current four foam-block rows.
+  // Rettifilo: the real chicane leaves the original approach direction open as
+  // a straight asphalt escape lane. The racing ribbon bends away around grass
+  // islands; low chevron boards slow cars before the lane rejoins.
   {
     const detail = tagReference(new THREE.Group(), 'rettifilo-escape');
+    const escape = buildRettifiloEscapeSurface(cl);
     const escapeMat = new THREE.MeshStandardMaterial({
-      map: TexFactory._wrap(TexFactory.asphalt(54, 10), 1, 1, 8), roughness: .96,
+      map: TexFactory._wrap(TexFactory.asphalt(42, 11), 1, 12, 8),
+      roughness: .94,
+      side: THREE.DoubleSide,
     });
-    const apron = new THREE.Mesh(buildRibbon(cl, i => {
-      if (!inRange(cl.s[i], 650, 965, cl.length)) return null;
-      const h = cl.hw[i];
-      return [-h - 25, -0.10, -h - 7.5, -0.035];
-    }, { vScale: 12, uSpan: 5 }), escapeMat);
-    apron.receiveShadow = true;
-    detail.add(apron);
+    const roadGeometry = new THREE.BufferGeometry();
+    roadGeometry.setAttribute('position', new THREE.Float32BufferAttribute(escape.layer.positions, 3));
+    roadGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(escape.layer.normals, 3));
+    roadGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(escape.uvs, 2));
+    roadGeometry.setIndex(escape.layer.indices);
+    const escapeRoad = new THREE.Mesh(roadGeometry, escapeMat);
+    escapeRoad.name = 'RettifiloStraightEscape';
+    escapeRoad.receiveShadow = true;
+    detail.add(escapeRoad);
 
-    const foamWhite = new THREE.MeshStandardMaterial({ color: 0xf3f0e6, roughness: .88 });
-    const foamRed = new THREE.MeshStandardMaterial({ color: 0xcf2520, roughness: .8 });
-    const blocks = [[], []];
-    for (let row = 0; row < 4; row++) for (let k = 0; k < 6; k++) {
-      const s = 760 + row * 13;
-      const p = cl.at(s);
-      const lat = -p.hw - 9.5 - k * 2.45;
-      const box = new THREE.Mesh(new THREE.BoxGeometry(2.12, .82, .72), (row + k) % 2 ? foamRed : foamWhite);
-      place(box, s, lat, .27);
-      blocks[(row + k) % 2].push(box);
+    const chevronCanvas = document.createElement('canvas');
+    chevronCanvas.width = 256;
+    chevronCanvas.height = 96;
+    const cg = chevronCanvas.getContext('2d');
+    cg.fillStyle = '#f3f0e6';
+    cg.fillRect(0, 0, 256, 96);
+    cg.fillStyle = '#cf2520';
+    for (let x = -12; x < 250; x += 58) {
+      cg.beginPath();
+      cg.moveTo(x, 10);
+      cg.lineTo(x + 34, 48);
+      cg.lineTo(x, 86);
+      cg.lineTo(x + 18, 86);
+      cg.lineTo(x + 52, 48);
+      cg.lineTo(x + 18, 10);
+      cg.closePath();
+      cg.fill();
     }
-    detail.add(mergeMeshes(blocks[0], foamWhite, 'RettifiloFoamWhite'));
-    detail.add(mergeMeshes(blocks[1], foamRed, 'RettifiloFoamRed'));
+    const chevronTexture = new THREE.CanvasTexture(chevronCanvas);
+    chevronTexture.colorSpace = THREE.SRGBColorSpace;
+    const chevronMat = new THREE.MeshStandardMaterial({ map: chevronTexture, roughness: .72 });
+    const boards = [];
+    const sx = escape.start[0], sz = escape.start[2];
+    const ex = escape.end[0], ez = escape.end[2];
+    const dx = ex - sx, dz = ez - sz;
+    const roadLength = Math.hypot(dx, dz) || 1;
+    const tx = dx / roadLength, tz = dz / roadLength;
+    const nx = -tz, nz = tx;
+    [0.38, 0.56, 0.74].forEach((t, row) => {
+      const lateral = row % 2 === 0 ? -1.35 : 1.35;
+      const board = new THREE.Mesh(new THREE.BoxGeometry(2.7, .86, .14), chevronMat);
+      board.position.set(
+        lerp(sx, ex, t) + nx * lateral,
+        lerp(escape.start[1], escape.end[1], t) + .48,
+        lerp(sz, ez, t) + nz * lateral,
+      );
+      board.rotation.y = Math.atan2(tx, tz);
+      boards.push(board);
+    });
+    detail.add(mergeMeshes(boards, chevronMat, 'RettifiloChevronBoards'));
     root.add(detail);
   }
 
@@ -2260,7 +2374,8 @@ class RacingLine {
   at(s) {
     const { i, j, f } = this.cl._locate(s);
     return { offset: lerp(this.offset[i], this.offset[j], f),
-             speed:  lerp(this.speed[i], this.speed[j], f) };
+             speed:  lerp(this.speed[i], this.speed[j], f),
+             curvature: lerp(this.curv[i], this.curv[j], f) };
   }
 
   /** Subtle rubber deposit that follows the driven line, strongest in braking zones. */
@@ -3133,7 +3248,104 @@ class MonzaTrack {
 /* ═══════════════════════════════════════════════════════════════════════════
    DEMO BOOTSTRAP  (strip this when integrating the module)
    ═══════════════════════════════════════════════════════════════════════════ */
-async function initDemo() {
+const appFlow = new MonzaAppFlow();
+const appMenu = document.getElementById('appMenu');
+const menuTitle = document.getElementById('menuTitle');
+const menuCopy = document.getElementById('menuCopy');
+const mainActions = document.getElementById('mainActions');
+const raceActions = document.getElementById('raceActions');
+const pauseActions = document.getElementById('pauseActions');
+const raceResults = document.getElementById('raceResults');
+let activeMode = null;
+
+window.render_game_to_text = () => JSON.stringify({
+  version: 'v0.1',
+  screen: appFlow.snapshot().screen,
+  mode: appFlow.snapshot().mode,
+  race: null,
+});
+window.advanceTime = () => {};
+
+function showMenuPanel(kind, results = null) {
+  appMenu.hidden = false;
+  document.body.classList.add('menu-open');
+  mainActions.hidden = kind !== 'main';
+  raceActions.hidden = kind !== 'race';
+  pauseActions.hidden = kind !== 'pause' && kind !== 'results';
+  raceResults.hidden = kind !== 'results';
+  if (kind === 'main') {
+    menuTitle.textContent = 'Monza';
+    menuCopy.textContent = 'Hardcore vehicle dynamics at the Temple of Speed. Chase a valid lap or race a full twelve-car grid.';
+  } else if (kind === 'race') {
+    menuTitle.textContent = 'Circuit Race';
+    menuCopy.textContent = 'Three laps. Twelve cars. Drive from sixth or follow an all-AI field.';
+  } else if (kind === 'pause') {
+    menuTitle.textContent = 'Paused';
+    menuCopy.textContent = activeMode === 'timeTrial' ? 'Time Trial is paused.' : 'The race is paused.';
+  } else {
+    menuTitle.textContent = 'Classification';
+    menuCopy.textContent = 'Race complete. Results are local to this session.';
+    raceResults.innerHTML = (results || []).map(entry =>
+      `<div class="race-result"><b>${entry.position}</b><span>${entry.driverName}</span><span>${entry.retired ? 'DNF' : fmtTime(entry.totalMs)}</span></div>`
+    ).join('');
+  }
+}
+
+function damageComponentLabel(component) {
+  return ({
+    frontWing: 'Front wing',
+    rearWing: 'Rear wing',
+    frontLeftSuspension: 'FL suspension',
+    frontRightSuspension: 'FR suspension',
+    rearLeftSuspension: 'RL suspension',
+    rearRightSuspension: 'RR suspension',
+    frontLeftTire: 'FL tire',
+    frontRightTire: 'FR tire',
+    rearLeftTire: 'RL tire',
+    rearRightTire: 'RR tire',
+    engine: 'Engine',
+    gearbox: 'Gearbox',
+    chassis: 'Chassis',
+  })[component] || component;
+}
+
+async function startSelectedMode(mode) {
+  const event = mode === 'timeTrial' ? 'startTimeTrial' : mode === 'participate' ? 'startParticipate' : 'startWatch';
+  if (!appFlow.send(event)) return;
+  activeMode = mode;
+  document.getElementById('tBestLabel').textContent = mode === 'timeTrial' ? 'Best' : 'Position';
+  document.getElementById('tLastLabel').textContent = mode === 'timeTrial' ? 'Last' : 'Damage';
+  appMenu.hidden = true;
+  document.body.classList.remove('menu-open');
+  document.getElementById('load').style.visibility = 'visible';
+  try {
+    await initDemo(mode);
+  } catch (err) {
+    console.error(err);
+    document.getElementById('loadTxt').textContent = 'Error: ' + err.message;
+  }
+}
+
+document.getElementById('menuTimeTrial').onclick = () => void startSelectedMode('timeTrial');
+document.getElementById('menuRace').onclick = () => {
+  if (appFlow.send('openRace')) showMenuPanel('race');
+};
+document.getElementById('menuBack').onclick = () => {
+  if (appFlow.send('back')) showMenuPanel('main');
+};
+document.getElementById('menuParticipate').onclick = () => void startSelectedMode('participate');
+document.getElementById('menuWatch').onclick = () => void startSelectedMode('watch');
+document.getElementById('menuResume').onclick = () => {
+  if (appFlow.send('resume')) {
+    appMenu.hidden = true;
+    document.body.classList.remove('menu-open');
+    if (window.MONZA) window.MONZA.GameState.flags.paused = false;
+  }
+};
+document.getElementById('menuRestart').onclick = () => location.reload();
+document.getElementById('menuMain').onclick = () => location.assign('/');
+
+async function initDemo(mode = 'timeTrial') {
   const canvas = document.getElementById('game');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   renderer.setSize(innerWidth, innerHeight);
@@ -3182,12 +3394,20 @@ async function initDemo() {
   const { cl, surf, line } = track;
 
   await progress('Starting Vehicle Sim physics', 0.98);
-  const sim = await new MonzaVehicleSim({
-    centerline: cl,
-    surface: surf,
-    scene,
-    inputElement: document.body,
-  }).init();
+  const sim = mode === 'timeTrial'
+    ? await new MonzaVehicleSim({
+        centerline: cl,
+        surface: surf,
+        scene,
+        inputElement: document.body,
+      }).init()
+    : await new MonzaRaceSession({
+        centerline: cl,
+        racingLine: line,
+        surface: surf,
+        scene,
+        mode,
+      }).init();
   const car = sim.car;
   const rig = new CameraRig(camera, cl, surf);
   const hud = new HUD(cl, line);
@@ -3195,7 +3415,13 @@ async function initDemo() {
     sim.applySetup(setup);
     document.getElementById('bAI').textContent = 'Auto: ' + (sim.isAutoShift() ? 'on' : 'off');
   });
-  const competitionPanel = new CompetitionPanel(document.body);
+  const competitionPanel = mode === 'timeTrial'
+    ? new CompetitionPanel(document.body)
+    : {
+        snapshot: () => ({ playerName: '', status: 'disabled-in-race', entries: 0, open: false }),
+        submitCompletedLap: async () => {},
+        dispose: () => {},
+      };
   document.getElementById('bAI').textContent = 'Auto: ' + (sim.isAutoShift() ? 'on' : 'off');
 
   window.MONZA = { track, sim, car, rig, hud, setupModal, competitionPanel, scene, renderer, camera, GameState, EventBus };
@@ -3260,9 +3486,11 @@ async function initDemo() {
   };
 
   EventBus.on('car:contact', () => hud.toast('Contact!', 700));
-  EventBus.on('lap:complete', () => {
-    void competitionPanel.submitCompletedLap(hud.competitionState());
-  });
+  if (mode === 'timeTrial') {
+    EventBus.on('lap:complete', () => {
+      void competitionPanel.submitCompletedLap(hud.competitionState());
+    });
+  }
 
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
@@ -3274,6 +3502,7 @@ async function initDemo() {
   let previousFrameMs = performance.now();
   rig.set(0);
   GameState.flags.ready = true;
+  appFlow.send(mode === 'timeTrial' ? 'loadedTimeTrial' : 'loadedRace');
   document.getElementById('load').classList.add('done');
   setTimeout(() => document.getElementById('load').remove(), 900);
   hud.toast('Vehicle Sim v0.1 · Monza', 2600);
@@ -3294,6 +3523,34 @@ async function initDemo() {
       gs.position.copy(car.pos); gs.distance = car.distance;
       gs.lateral = car.lateral; gs.onTrack = car.onTrack;
       hud.update(car, surf, performance.now());
+      if (mode !== 'timeTrial') {
+        const race = sim.raceSnapshot();
+        const focus = race?.vehicles.find(vehicle => vehicle.id === race.focusedVehicleId);
+        if (race && focus) {
+          document.getElementById('lapBig').textContent = race.phase === 'countdown'
+            ? Math.max(1, Math.ceil(race.countdownMs / 1000)).toString()
+            : fmtTime(race.raceTimeMs);
+          document.getElementById('lapStatus').textContent = race.phase === 'countdown'
+            ? 'Starting grid'
+            : focus.retired ? 'Retired'
+            : race.phase === 'finished' ? 'Chequered flag'
+            : `P${focus.position} of 12${focus.penaltyMs ? ` · +${(focus.penaltyMs / 1000).toFixed(0)}s` : ''}`;
+          document.getElementById('tBest').textContent = `P${focus.position}`;
+          const worstDamage = focus.damage
+            ? Object.entries(focus.damage.health).sort((a, b) => a[1] - b[1])[0]
+            : null;
+          const damagePercent = focus.damage ? Math.round(focus.damage.totalDamage * 100) : 0;
+          document.getElementById('tLast').textContent = focus.retired
+            ? 'DNF'
+            : worstDamage && worstDamage[1] < 0.98
+              ? `${damagePercent}% · ${damageComponentLabel(worstDamage[0])}`
+              : 'Clear';
+          document.getElementById('tLapNo').textContent = `${Math.min(focus.completedLaps + 1, race.lapCount)} / ${race.lapCount}`;
+          document.getElementById('mapMode').textContent = mode === 'watch'
+            ? `AI race · ${focus.driverName}`
+            : `Race · P${focus.position}`;
+        }
+      }
     }
   }
 
@@ -3309,6 +3566,8 @@ async function initDemo() {
   };
   window.render_game_to_text = () => JSON.stringify({
     version: 'v0.1',
+    screen: appFlow.snapshot().screen,
+    mode: appFlow.snapshot().mode,
     physics: sim.kind,
     effects: sim.effectsStatus(),
     track: 'Autodromo Nazionale Monza',
@@ -3324,6 +3583,7 @@ async function initDemo() {
     },
     competition: hud.competitionState(),
     leaderboard: competitionPanel.snapshot(),
+    race: mode === 'timeTrial' ? null : sim.raceSnapshot(),
     camera: CAM_MODES[rig.mode],
     quality: track.qualityMetrics(),
     referenceDetails: track.referenceDetails(),
@@ -3333,16 +3593,34 @@ async function initDemo() {
     const dt = Math.min(Math.max(0, nowMs - previousFrameMs) / 1000, DELTA_MAX);
     previousFrameMs = nowMs;
     simulate(dt, nowMs);
+    if (mode !== 'timeTrial') {
+      const race = sim.raceSnapshot();
+      if (race?.phase === 'running' && appFlow.snapshot().screen === 'raceCountdown') {
+        appFlow.send('greenFlag');
+      }
+      if (race?.phase === 'finished' && appFlow.snapshot().screen === 'raceRunning') {
+        appFlow.send('finish');
+        GameState.flags.paused = true;
+        showMenuPanel('results', race.classification);
+      }
+    }
     sky.position.copy(camera.position);
     renderer.render(scene, camera);
   }
   renderer.setAnimationLoop(frame);
 }
 
-initDemo().catch(err => {
-  console.error(err);
-  document.getElementById('loadTxt').textContent = 'Error: ' + err.message;
+addEventListener('keydown', event => {
+  if (event.code !== 'Escape' || !window.MONZA) return;
+  const screen = appFlow.snapshot().screen;
+  if (!['timeTrial', 'raceCountdown', 'raceRunning'].includes(screen)) return;
+  if (appFlow.send('pause')) {
+    window.MONZA.GameState.flags.paused = true;
+    showMenuPanel('pause');
+  }
 });
+
+showMenuPanel('main');
 </script>
 </body>
 </html>

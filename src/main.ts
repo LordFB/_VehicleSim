@@ -69,7 +69,7 @@ async function loadDroppedTrackPrintPackage(file: File): Promise<void> {
     const decoded = decodeTrackPrintPackage(bytes);
     await saveTrackPrintPreviewTrackForBrowser(decoded.track);
     const target = new URL(window.location.href);
-    target.pathname = '/';
+    target.pathname = '/simulator.html';
     target.searchParams.set('track', 'trackprint');
     window.location.assign(target.toString());
   } catch (error) {
